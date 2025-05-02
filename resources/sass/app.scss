@@ -1,0 +1,22 @@
+// resources/sass/app.scss
+
+// Fonts (jika menggunakan Google Fonts, dll)
+// @import url('https://fonts.googleapis.com/css?family=Nunito');
+
+// Variables (jika ingin override variabel Bootstrap)
+// @import 'variables';
+
+// Bootstrap
+@import "~bootstrap/scss/bootstrap";
+
+// DataTables Bootstrap 5 Styling
+@import "~datatables.net-bs5/css/dataTables.bootstrap5.min.css";
+@import "~datatables.net-responsive-bs5/css/responsive.bootstrap5.min.css";
+
+// Select2 Bootstrap 5 Theme (jika menggunakan tema khusus, atau styling default Select2)
+@import "~select2/dist/css/select2.min.css";
+// Jika Anda menemukan tema Select2 Bootstrap 5 yang bagus, import di sini.
+// Contoh: @import '~select2-bootstrap-5-theme/dist/select2-bootstrap-5-theme.min.css';
+
+// Custom Styles Aplikasi Anda
+// @import 'custom';
