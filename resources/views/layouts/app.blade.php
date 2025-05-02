@@ -89,9 +89,9 @@
                                      </a>
                                      <ul class="dropdown-menu" aria-labelledby="masterDataDropdown">
                                          <li><a class="dropdown-item {{ request()->routeIs('admin.produk.*') ? 'active' : '' }}" href="{{ route('admin.produk.index') }}">Produk</a></li>
-                                         <li><a class="dropdown-item {{ request()->routeIs('admin.merk.*') ? 'active' : '' }}" href="#">Merk</a></li> {{-- Ganti # dengan route('admin.merk.index') jika sudah ada --}}
-                                         <li><a class="dropdown-item {{ request()->routeIs('admin.supplier.*') ? 'active' : '' }}" href="#">Supplier</a></li> {{-- Ganti # dengan route('admin.supplier.index') jika sudah ada --}}
-                                         <li><a class="dropdown-item {{ request()->routeIs('admin.pelanggan.*') ? 'active' : '' }}" href="#">Pelanggan</a></li> {{-- Ganti # dengan route('admin.pelanggan.index') jika sudah ada --}}
+                                         <li><a class="dropdown-item {{ request()->routeIs('admin.merk.*') ? 'active' : '' }}" href="{{ route('admin.merk.index') }}">Merk</a></li> 
+                                         <li><a class="dropdown-item {{ request()->routeIs('admin.supplier.*') ? 'active' : '' }}" href="{{ route('admin.supplier.index') }}">Supplier</a></li> 
+                                         <li><a class="dropdown-item {{ request()->routeIs('admin.pelanggan.*') ? 'active' : '' }}" href="{{ route('admin.pelanggan.index') }}">Pelanggan</a></li> 
                                      </ul>
                                 </li>
                                  <li class="nav-item">

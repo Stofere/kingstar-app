@@ -8,7 +8,10 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\Admin\AdminDashboardController;
 use App\Http\Controllers\Admin\ProdukController as AdminProdukController;
-use App\Http\Controllers\Admin\PenggunaController; // Contoh Controller Admin
+use App\Http\Controllers\Admin\PenggunaController; 
+use App\Http\Controllers\Admin\MerkController;
+use App\Http\Controllers\Admin\SupplierController;
+use App\Http\Controllers\Admin\PelangganController;
 // ... (tambahkan controller lain sesuai kebutuhan)
 use App\Http\Controllers\Kasir\KasirDashboardController;
 use App\Http\Controllers\Kasir\PenjualanController as KasirPenjualanController;
@@ -57,9 +60,11 @@ Route::middleware(['auth'])->group(function () {
 
         // Contoh CRUD Pengguna
         Route::resource('pengguna', PenggunaController::class);
-        // Contoh CRUD Produk (oleh Admin)
         Route::resource('produk', AdminProdukController::class);
-        // ... (Rute Admin lainnya: Supplier, Merk, Pelanggan, Pembelian, Laporan, dll.)
+        Route::resource('merk', MerkController::class);
+        Route::resource('supplier', SupplierController::class);
+        Route::resource('pelanggan', PelangganController::class);
+        // ... (Rute Admin lainnya: Pembelian, Laporan, dll.)
 
     });
 
