@@ -13,14 +13,15 @@ class CreateUsersTable extends Migration
      */
     public function up()
     {
-        Schema::create('users', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->string('email')->unique();
-            $table->timestamp('email_verified_at')->nullable();
+        Schema::create('pengguna', function (Blueprint $table) {
+            $table->id(); 
+            $table->string('nama');
+            $table->string('username', 100)->unique();
             $table->string('password');
-            $table->rememberToken();
-            $table->timestamps();
+            $table->string('role', 50)->index()->comment('ADMIN, KASIR, GUDANG');
+            $table->boolean('status')->default(true)->comment('1=Aktif, 0=Tidak Aktif');
+            $table->rememberToken(); // Tambahkan jika menggunakan fitur remember me Laravel
+            $table->timestamps(); // created_at, updated_at
         });
     }
 
@@ -31,6 +32,6 @@ class CreateUsersTable extends Migration
      */
     public function down()
     {
-        Schema::dropIfExists('users');
+        Schema::dropIfExists('pengguna');
     }
 }
