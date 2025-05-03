@@ -12,7 +12,7 @@ class MerkFactory extends Factory
     public function definition()
     {
         // Contoh beberapa merk sound system/lighting
-        $brands = ['Yamaha', 'JBL', 'Behringer', 'Shure', 'Soundcraft', 'Allen & Heath', 'Martin', 'Robe', 'Clay Paky', 'Neutrik'];
+        $brands = ['Yamaha', 'JBL', 'Behringer', 'Shure', 'Soundcraft', 'Huper', 'Martin', 'Robe', 'Clay Paky', 'Neutrik'];
         return [
             // Ambil nama unik dari list atau generate nama perusahaan
             'nama' => $this->faker->unique()->randomElement($brands) . ' ' . $this->faker->randomElement(['Pro', 'Audio', 'Lighting', '']),

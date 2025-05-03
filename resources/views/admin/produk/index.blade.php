@@ -3,12 +3,14 @@
 @section('title', 'Kelola Produk')
 
 @push('styles')
-    {{-- DataTables CSS (tetap diperlukan) --}}
+    {{-- DataTables CSS --}}
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.bootstrap5.min.css">
     <style>
-        #produk-table img { max-width: 100%; height: auto; max-height: 50px; object-fit: contain; }
+        #produk-table img { max-width: 100%; height: auto; max-height: 50px; object-fit: contain; cursor: pointer; }
         #produk-table .action-buttons form { margin-bottom: 0; }
+        /* Style untuk modal gambar */
+        .image-modal-content { max-width: 90vw; max-height: 85vh; }
     </style>
 @endpush
 
@@ -24,7 +26,7 @@
         </div>
         <div class="card-body">
             <div class="table-responsive">
-                {{-- Tabel HTML biasa --}}
+                {{-- Tabel HTML KOSONG, hanya header --}}
                 <table id="produk-table" class="table table-striped table-bordered dt-responsive nowrap" style="width:100%">
                     <thead>
                         <tr>
@@ -40,68 +42,32 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {{-- Loop data dari Controller menggunakan Blade --}}
-                        @forelse ($produk as $item)
-                        <tr>
-                            <td>{{ $loop->iteration }}</td>
-                            <td>
-                                {{-- Tampilkan gambar --}}
-                                @if ($item->gambar && Storage::exists('public/produk/' . $item->gambar))
-                                    <img src="{{ Storage::url('produk/' . $item->gambar) }}" alt="{{ $item->nama }}" height="50">
-                                @else
-                                    <span class="text-muted small">(No Image)</span>
-                                @endif
-                            </td>
-                            <td>{{ $item->nama }}</td>
-                            <td>{{ $item->merk ? $item->merk->nama : '-' }}</td>
-                            <td>{{ $item->kode_produk ?? '-' }}</td>
-                            <td>{{ 'Rp ' . number_format($item->harga_jual_standart ?? 0, 0, ',', '.') }}</td>
-                            <td>
-                                {{-- Tampilkan status serial --}}
-                                @if($item->memiliki_serial)
-                                    <span class="badge bg-success">Ya</span>
-                                @else
-                                    <span class="badge bg-secondary">Tidak</span>
-                                @endif
-                            </td>
-                             <td>
-                                {{-- Tampilkan status produk --}}
-                                @if($item->status)
-                                    <span class="badge bg-success">Aktif</span>
-                                @else
-                                    <span class="badge bg-secondary">Tidak Aktif</span>
-                                @endif
-                            </td>
-                            <td class="action-buttons">
-                                {{-- Tombol Aksi --}}
-                                <a href="{{ route('admin.produk.edit', $item->id) }}" class="btn btn-warning btn-sm me-1" title="Edit">
-                                    <i class="bi bi-pencil-square"></i>
-                                </a>
-                                <form action="{{ route('admin.produk.destroy', $item->id) }}" method="POST" class="d-inline form-delete">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="btn btn-danger btn-sm" title="Hapus">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
-                                </form>
-                            </td>
-                        </tr>
-                        @empty
-                        <tr>
-                            {{-- Pesan jika tidak ada data --}}
-                            <td colspan="9" class="text-center">Belum ada data produk.</td>
-                        </tr>
-                        @endforelse
+                        {{-- Data akan diisi oleh DataTables via AJAX --}}
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
 </div>
+
+<!-- Modal untuk menampilkan gambar -->
+<div class="modal fade" id="imageModal" tabindex="-1" aria-labelledby="imageModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="imageModalLabel">Gambar Produk</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center">
+        <img src="" id="modalImage" class="img-fluid image-modal-content" alt="Gambar Produk">
+      </div>
+    </div>
+  </div>
+</div>
 @endsection
 
 @push('scripts')
-    {{-- DataTables JS (tetap diperlukan) --}}
+    {{-- DataTables JS --}}
     <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
     <script src="https://cdn.datatables.net/responsive/2.5.0/js/dataTables.responsive.min.js"></script>
@@ -109,24 +75,48 @@
     {{-- SweetAlert2 --}}
     <script src="//cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
-    {{-- Inisialisasi DataTables untuk Client-Side --}}
+    {{-- Inisialisasi DataTables untuk Server-Side --}}
     <script>
+        // Fungsi untuk menampilkan modal gambar
+        function showImageModal(imageUrl, imageTitle) {
+            $('#modalImage').attr('src', imageUrl);
+            $('#imageModalLabel').text('Gambar Produk: ' + imageTitle);
+            var imageModal = new bootstrap.Modal(document.getElementById('imageModal'));
+            imageModal.show();
+        }
+
         $(document).ready(function() {
-            // Inisialisasi DataTables pada tabel HTML
+            // Inisialisasi DataTables
             var table = $('#produk-table').DataTable({
-                responsive: true, // Aktifkan responsivitas
-                // Tidak perlu 'processing', 'serverSide', 'ajax', 'columns' untuk client-side
-                language: { // Opsi untuk bahasa Indonesia
+                processing: true, // Tampilkan pesan "Processing..."
+                serverSide: true, // Aktifkan server-side processing
+                responsive: true,
+                ajax: "{{ route('admin.produk.index') }}", // URL untuk ambil data AJAX
+                columns: [
+                    // Kolom harus sesuai dengan data yang dikirim dari controller
+                    { data: 'DT_RowIndex', name: 'DT_RowIndex', orderable: false, searchable: false, width: '5%' }, // Nomor urut
+                    { data: 'gambar_display', name: 'gambar_display', orderable: false, searchable: false, width: '10%' }, // Kolom gambar
+                    { data: 'nama', name: 'nama' }, // Nama produk (bisa search & sort)
+                    { data: 'merk.nama', name: 'merk.nama', defaultContent: '-', searchable: true, orderable: true }, // Merk (bisa search & sort)
+                    { data: 'kode_produk', name: 'kode_produk', defaultContent: '-' }, // Kode produk
+                    { data: 'harga_jual_standart', name: 'harga_jual_standart' }, // Harga
+                    { data: 'memiliki_serial', name: 'memiliki_serial', orderable: false, searchable: false }, // Serial
+                    { data: 'status', name: 'status', orderable: false, searchable: false }, // Status
+                    { data: 'action', name: 'action', orderable: false, searchable: false, width: '10%' } // Kolom aksi
+                ],
+                language: { // Opsi untuk bahasa Indonesia DataTables
                     url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/id.json',
+                    processing: '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>' // Custom loading indicator
                 },
-                 // Optional: Atur default ordering jika perlu
-                 order: [[2, 'asc']] // Order by kolom ke-3 (Nama Produk) ascending
+                order: [[2, 'asc']] // Default order by kolom ke-3 (Nama Produk) ascending
             });
 
-            // Konfirmasi Hapus (tetap sama, bekerja pada tombol di HTML)
+            // Konfirmasi Hapus (delegasi event)
             $('#produk-table').on('submit', '.form-delete', function(e) {
                 e.preventDefault();
                 var form = this;
+                var url = $(form).attr('action'); // Ambil URL dari form
+
                 Swal.fire({
                     title: 'Apakah Anda Yakin?',
                     text: "Data produk yang dihapus tidak dapat dikembalikan!",
@@ -138,7 +128,41 @@
                     cancelButtonText: 'Batal'
                 }).then((result) => {
                     if (result.isConfirmed) {
-                        form.submit();
+                        // Kirim request hapus via AJAX untuk refresh tabel otomatis
+                        $.ajax({
+                            url: url,
+                            type: 'POST', // Method tetap POST karena ada @method('DELETE')
+                            data: $(form).serialize(), // Kirim data form (termasuk _token & _method)
+                            dataType: 'json', // Harapkan response JSON dari controller
+                            success: function(response) {
+                                if(response.success) {
+                                    Swal.fire(
+                                        'Dihapus!',
+                                        response.message,
+                                        'success'
+                                    );
+                                    table.ajax.reload(null, false); // Reload DataTables tanpa reset pagination
+                                } else {
+                                    Swal.fire(
+                                        'Gagal!',
+                                        response.message,
+                                        'error'
+                                    );
+                                }
+                            },
+                            error: function(xhr, status, error) {
+                                // Tangani error AJAX
+                                var errorMessage = 'Terjadi kesalahan saat menghapus data.';
+                                if(xhr.responseJSON && xhr.responseJSON.message) {
+                                    errorMessage = xhr.responseJSON.message;
+                                }
+                                Swal.fire(
+                                    'Error!',
+                                    errorMessage,
+                                    'error'
+                                );
+                            }
+                        });
                     }
                 })
             });

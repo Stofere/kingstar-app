@@ -4,159 +4,190 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Produk;
-use App\Models\Merk; // Butuh Merk untuk dropdown
-use App\Http\Requests\StoreProdukRequest;  // Gunakan Form Request
-use App\Http\Requests\UpdateProdukRequest; // Gunakan Form Request
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage; // Untuk handle file gambar
+use App\Models\Merk;
+use App\Http\Requests\StoreProdukRequest;
+use App\Http\Requests\UpdateProdukRequest;
+use Illuminate\Http\Request; 
+use Illuminate\Support\Facades\Storage;
+use Yajra\DataTables\Facades\DataTables;
 
 
 class ProdukController extends Controller
 {
     /**
      * Display a listing of the resource.
+     * Handle AJAX request for DataTables server-side processing.
      *
-     * @param \Illuminate\Http\Request $request
+     * @param \Illuminate\Http\Request $request // <-- Terima $request
      * @return \Illuminate\Contracts\View\View|\Illuminate\Http\JsonResponse
      */
-    public function index() // Tidak perlu Request $request untuk client-side
+    public function index(Request $request) // <-- Tambahkan Request $request
     {
-        // Ambil SEMUA produk, eager load merk
-        // Untuk data yang sangat besar, pertimbangkan pagination Laravel biasa
-        // atau implementasi server-side DataTables manual/Yajra nanti.
-        $produk = Produk::where('status', 1)->get();
+        // Jika request adalah AJAX (dari DataTables)
+        if ($request->ajax()) {
+            // Ambil data produk, eager load merk
+            // select('produk.*') penting agar kolom dari tabel produk bisa diakses
+            $produk = Produk::with('merk')->select('produk.*');
 
-        // Kirim data ke view index
-        return view('admin.produk.index', compact('produk'));
+            // Proses data menggunakan Yajra DataTables
+            return DataTables::of($produk)
+                ->addIndexColumn() // Tambah kolom nomor urut DT_RowIndex
+                ->editColumn('merk.nama', function ($row) {
+                    // Format kolom merk
+                    return $row->merk ? $row->merk->nama : '-';
+                })
+                ->editColumn('harga_jual_standart', function ($row) {
+                    // Format harga
+                    return 'Rp ' . number_format($row->harga_jual_standart ?? 0, 0, ',', '.');
+                })
+                ->editColumn('memiliki_serial', function ($row) {
+                    // Format boolean serial
+                    return $row->memiliki_serial ? '<span class="badge bg-success">Ya</span>' : '<span class="badge bg-secondary">Tidak</span>';
+                })
+                 ->editColumn('status', function ($row) {
+                    // Format boolean status
+                    return $row->status ? '<span class="badge bg-success">Aktif</span>' : '<span class="badge bg-secondary">Tidak Aktif</span>';
+                })
+                ->addColumn('gambar_display', function ($row) {
+                    // Tampilkan thumbnail gambar
+                    if ($row->gambar && Storage::exists('public/produk/' . $row->gambar)) {
+                        $url = Storage::url('produk/' . $row->gambar);
+                        // Tambahkan link untuk modal atau lihat ukuran penuh jika perlu
+                        return '<img src="' . $url . '" alt="' . e($row->nama) . '" height="50" style="cursor: pointer;" onclick="showImageModal(\''.$url.'\', \''.e($row->nama).'\')">';
+                    }
+                    return '<span class="text-muted small">(No Image)</span>';
+                })
+                ->addColumn('action', function ($row) {
+                    // Tambah tombol aksi Edit & Hapus
+                    $editUrl = route('admin.produk.edit', $row->id);
+                    $deleteUrl = route('admin.produk.destroy', $row->id);
+                    $btn = '<a href="' . $editUrl . '" class="btn btn-warning btn-sm me-1" title="Edit"><i class="bi bi-pencil-square"></i></a>';
+                    $btn .= '<form action="' . $deleteUrl . '" method="POST" class="d-inline form-delete">';
+                    $btn .= csrf_field();
+                    $btn .= method_field('DELETE');
+                    $btn .= '<button type="submit" class="btn btn-danger btn-sm" title="Hapus"><i class="bi bi-trash"></i></button>';
+                    $btn .= '</form>';
+                    return $btn;
+                })
+                // Beritahu DataTables kolom mana saja yang berisi HTML mentah
+                ->rawColumns(['memiliki_serial', 'status', 'gambar_display', 'action'])
+                ->make(true); // Buat dan kirim response JSON untuk DataTables
+        }
+
+        // Jika bukan request AJAX, tampilkan view index biasa
+        // View ini hanya berisi kerangka tabel HTML, datanya akan diisi via AJAX
+        return view('admin.produk.index');
     }
 
-    /**
-     * Show the form for creating a new resource.
-     *
-     * @return \Illuminate\Contracts\View\View
-     */
     public function create()
     {
-        $merk = Merk::orderBy('nama')->pluck('nama', 'id'); // Ambil data merk untuk dropdown
-        $produk = new Produk(['status' => true, 'satuan' => 'PCS']); // Default values for create form
+        // Ambil data Merk untuk dropdown di form
+        $merk = Merk::orderBy('nama')->pluck('nama', 'id');
+        // Buat instance Produk baru untuk mengisi nilai default di form (jika ada)
+        $produk = new Produk([
+            'status' => true,         // Default status aktif
+            'satuan' => 'PCS',        // Default satuan PCS
+            'memiliki_serial' => false // Default tidak memiliki serial
+            // Tambahkan default lain jika perlu
+        ]);
+        // Kembalikan view create dengan data merk dan objek produk baru
         return view('admin.produk.create', compact('merk', 'produk'));
     }
 
-    /**
-     * Store a newly created resource in storage.
-     *
-     * @param  \App\Http\Requests\StoreProdukRequest  $request
-     * @return \Illuminate\Http\RedirectResponse
-     */
-    public function store(StoreProdukRequest $request) // Inject request
+    public function store(StoreProdukRequest $request) 
     {
+        // Ambil data yang sudah divalidasi oleh StoreProdukRequest
         $validated = $request->validated();
 
-        // Handle file upload gambar
+        // Handle file upload gambar jika ada
         if ($request->hasFile('gambar')) {
-            $path = $request->file('gambar')->store('public/produk'); // Simpan di storage/app/public/produk
-            // Pastikan Anda sudah menjalankan `php artisan storage:link`
-            $validated['gambar'] = basename($path); // Simpan hanya nama file di DB
+            $path = $request->file('gambar')->store('public/produk');
+            $validated['gambar'] = basename($path); // Simpan nama file saja
         } else {
-             $validated['gambar'] = null; // Pastikan null jika tidak ada file
+             $validated['gambar'] = null; // Set null jika tidak ada gambar
         }
 
-        // Konversi boolean dari form (jika value '1'/'0')
+        // Konversi boolean dari form (nilai '1' atau '0') ke boolean PHP
         $validated['memiliki_serial'] = filter_var($request->input('memiliki_serial', false), FILTER_VALIDATE_BOOLEAN);
         $validated['status'] = filter_var($request->input('status', true), FILTER_VALIDATE_BOOLEAN);
 
-
+        // Buat record produk baru di database
         Produk::create($validated);
 
+        // Redirect ke halaman index produk dengan pesan sukses
         return redirect()->route('admin.produk.index')
                          ->with('success', 'Produk baru berhasil ditambahkan.');
     }
 
-    /**
-     * Display the specified resource.
-     *
-     * @param  \App\Models\Produk  $produk
-     * @return \Illuminate\Http\Response
-     */
     public function show(Produk $produk)
     {
-        // Biasanya tidak perlu halaman show terpisah untuk admin master data
         return redirect()->route('admin.produk.edit', $produk);
     }
 
     /**
      * Show the form for editing the specified resource.
      *
-     * @param  \App\Models\Produk  $produk
+     * @param  \App\Models\Produk  $produk // <-- Route Model Binding
      * @return \Illuminate\Contracts\View\View
      */
-    public function edit(Produk $produk) // Route model binding
+    public function edit(Produk $produk)
     {
+        // Ambil data Merk untuk dropdown
         $merk = Merk::orderBy('nama')->pluck('nama', 'id');
+        // Kembalikan view edit, pass data produk yang akan diedit dan data merk
         return view('admin.produk.edit', compact('produk', 'merk'));
     }
 
     /**
      * Update the specified resource in storage.
      *
-     * @param  \App\Http\Requests\UpdateProdukRequest  $request
-     * @param  \App\Models\Produk  $produk
+     * @param  \App\Http\Requests\UpdateProdukRequest  $request // <-- Gunakan UpdateProdukRequest
+     * @param  \App\Models\Produk  $produk // <-- Terima $produk dari route
      * @return \Illuminate\Http\RedirectResponse
      */
-    public function update(UpdateProdukRequest $request, Produk $produk) // Inject request & model
+    public function update(UpdateProdukRequest $request, Produk $produk) // <-- Injeksi UpdateProdukRequest & $produk
     {
+        // Ambil data yang sudah divalidasi oleh UpdateProdukRequest
         $validated = $request->validated();
 
-        // Handle file upload gambar (jika ada gambar baru)
+        // Handle file upload gambar (jika ada gambar baru diupload)
         if ($request->hasFile('gambar')) {
-            // 1. Hapus gambar lama jika ada
+            // 1. Hapus gambar lama jika ada di storage
             if ($produk->gambar && Storage::exists('public/produk/' . $produk->gambar)) {
                 Storage::delete('public/produk/' . $produk->gambar);
             }
             // 2. Simpan gambar baru
             $path = $request->file('gambar')->store('public/produk');
-            $validated['gambar'] = basename($path);
+            $validated['gambar'] = basename($path); // Update nama file di data tervalidasi
         }
-        // Jika tidak ada file baru, 'gambar' tidak akan ada di $validated,
-        // dan gambar lama tidak akan diubah.
+        // Jika tidak ada file baru yang diupload, $validated tidak akan berisi key 'gambar',
+        // sehingga kolom 'gambar' di database tidak akan diubah oleh $produk->update().
 
-        // Konversi boolean dari form (jika value '1'/'0')
+        // Konversi boolean dari form ('1'/'0') ke boolean PHP
         $validated['memiliki_serial'] = filter_var($request->input('memiliki_serial', false), FILTER_VALIDATE_BOOLEAN);
         $validated['status'] = filter_var($request->input('status', true), FILTER_VALIDATE_BOOLEAN);
 
+        // Update data produk di database
         $produk->update($validated);
 
-        return redirect()->route('admin.produk.index')
-                         ->with('success', 'Data produk berhasil diperbarui.');
+        // Redirect ke halaman index produk dengan pesan sukses
+        return redirect()->route('admin.produk.index')->with('success', 'Data produk berhasil diperbarui.');
     }
 
-    /**
-     * "Soft Delete" the specified resource from storage by setting status to false.
-     *
-     * @param  \App\Models\Produk  $produk
-     * @return \Illuminate\Http\RedirectResponse
-     */
-    public function destroy(Produk $produk) // Nama method tetap 'destroy' sesuai route resource
+    public function destroy(Produk $produk)
     {
-        // Tidak perlu menghapus gambar saat soft delete, produk mungkin diaktifkan lagi
-        // if ($produk->gambar && Storage::exists('public/produk/' . $produk->gambar)) {
-        //    Storage::delete('public/produk/' . $produk->gambar);
-        // }
-
-        // Ubah status menjadi false (Tidak Aktif)
-        $produk->status = false;
-
-        // Simpan perubahan
-        if ($produk->save()) {
-            // Jika berhasil disimpan
-            return redirect()->route('admin.produk.index')
-                             ->with('success', 'Produk berhasil dinonaktifkan.'); // Ubah pesan sukses
-        } else {
-            // Jika gagal menyimpan karena alasan tak terduga
-             return redirect()->route('admin.produk.index')
-                              ->with('error', 'Gagal menonaktifkan produk. Terjadi kesalahan saat menyimpan.');
+        try {
+             if ($produk->gambar && Storage::exists('public/produk/' . $produk->gambar)) {
+                Storage::delete('public/produk/' . $produk->gambar);
+             }
+            $produk->delete();
+            return redirect()->route('admin.produk.index')->with('success', 'Produk berhasil dihapus.');
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ($e->errorInfo[1] == 1451) {
+                 return redirect()->route('admin.produk.index')->with('error', 'Gagal menghapus produk. Produk masih digunakan dalam data stok atau transaksi.');
+            } else {
+                 return redirect()->route('admin.produk.index')->with('error', 'Gagal menghapus produk. Terjadi kesalahan database: ' . $e->getMessage());
+            }
         }
-
-        // Tidak perlu try-catch untuk foreign key constraint karena kita tidak mendelete
     }
 }

@@ -235,7 +235,7 @@
 
         <footer class="footer mt-auto py-3 bg-light">
             <div class="container text-center text-muted">
-                <small>&copy; {{ date('Y') }} {{ config('app.name', 'CV Kingstar System') }}. Developed by [Roger Jeremy].</small>
+                <small>&copy; {{ date('Y') }} {{ config('app.name', 'CV Kingstar System') }}. Developed by Roger Jeremy.</small>
             </div>
         </footer>
 

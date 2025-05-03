@@ -21,7 +21,6 @@ class DatabaseSeeder extends Seeder
             MasterDataSeeder::class,   // Buat Merk, Supplier, Pelanggan
             ProdukSeeder::class,       // Buat produk (membutuhkan Merk)
             StokBarangSeeder::class,   // Buat stok awal (membutuhkan Produk & Supplier)
-            // Tambahkan seeder lain di sini jika ada (misal: Seeder Transaksi Awal)
         ]);
 
         $this->command->info('Database Seeding Selesai.');

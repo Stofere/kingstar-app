@@ -58,7 +58,6 @@ Route::middleware(['auth'])->group(function () {
     Route::middleware(['role:ADMIN'])->prefix('admin')->name('admin.')->group(function () {
         Route::get('/dashboard', [AdminDashboardController::class, 'index'])->name('dashboard');
 
-        // Contoh CRUD Pengguna
         Route::resource('pengguna', PenggunaController::class);
         Route::resource('produk', AdminProdukController::class);
         Route::resource('merk', MerkController::class);
