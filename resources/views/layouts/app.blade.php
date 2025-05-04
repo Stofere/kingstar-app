@@ -100,7 +100,7 @@
                                     </a>
                                 </li>
                                 <li class="nav-item">
-                                    <a class="nav-link {{ request()->routeIs('admin.pembelian.*') ? 'active' : '' }}" href="#"> {{-- Ganti # dengan route('admin.pembelian.index') --}}
+                                    <a class="nav-link {{ request()->routeIs('admin.pembelian.*') ? 'active' : '' }}" href="{{ route('admin.pembelian.index')}}"> {{-- Ganti # dengan route('admin.pembelian.index') --}}
                                         <i class="bi bi-cart-plus me-1"></i> Pembelian
                                     </a>
                                 </li>

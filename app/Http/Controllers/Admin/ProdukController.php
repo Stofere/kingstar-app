@@ -10,6 +10,7 @@ use App\Http\Requests\UpdateProdukRequest;
 use Illuminate\Http\Request; 
 use Illuminate\Support\Facades\Storage;
 use Yajra\DataTables\Facades\DataTables;
+use Illuminate\Http\JsonResponse; // Import JsonResponse untuk type hinting
 
 
 class ProdukController extends Controller
@@ -190,4 +191,52 @@ class ProdukController extends Controller
             }
         }
     }
+
+        /**
+     * Mencari produk berdasarkan query untuk Select2 AJAX.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function searchAjax(Request $request): JsonResponse // Tambahkan method ini
+    {
+        $searchQuery = $request->input('q'); // Ambil query pencarian dari parameter 'q'
+        $page = $request->input('page', 1); // Ambil nomor halaman, default 1
+        $limit = 15; // Jumlah item per halaman
+
+        // Query dasar untuk produk yang aktif
+        $query = Produk::query()->where('status', true);
+
+        // Jika ada query pencarian, filter berdasarkan nama atau kode produk
+        if ($searchQuery) {
+            $query->where(function ($q) use ($searchQuery) {
+                $q->where('nama', 'LIKE', "%{$searchQuery}%")
+                  ->orWhere('kode_produk', 'LIKE', "%{$searchQuery}%");
+            });
+        }
+
+        // Lakukan pagination
+        $paginator = $query->select(['id', 'nama', 'kode_produk']) // Pilih kolom yang dibutuhkan
+                           ->orderBy('nama') // Urutkan berdasarkan nama
+                           ->paginate($limit, ['*'], 'page', $page);
+
+        // Format hasil untuk Select2
+        $formattedItems = $paginator->items(); // Dapatkan array item dari paginator
+
+        $results = collect($formattedItems)->map(function ($produk) {
+            // Buat teks yang informatif (Nama (Kode Produk))
+            $kode = $produk->kode_produk ? " ({$produk->kode_produk})" : "";
+            return [
+                'id' => $produk->id,
+                'text' => $produk->nama . $kode
+            ];
+        });
+
+        // Kembalikan data dalam format JSON yang dibutuhkan Select2
+        return response()->json([
+            'items' => $results,
+            'total_count' => $paginator->total() // Total item yang cocok (untuk pagination Select2)
+        ]);
+    }
+
 }

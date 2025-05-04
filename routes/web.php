@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\PenggunaController;
 use App\Http\Controllers\Admin\MerkController;
 use App\Http\Controllers\Admin\SupplierController;
 use App\Http\Controllers\Admin\PelangganController;
+use App\Http\Controllers\Admin\PembelianController;
 // ... (tambahkan controller lain sesuai kebutuhan)
 use App\Http\Controllers\Kasir\KasirDashboardController;
 use App\Http\Controllers\Kasir\PenjualanController as KasirPenjualanController;
@@ -63,8 +64,12 @@ Route::middleware(['auth'])->group(function () {
         Route::resource('merk', MerkController::class);
         Route::resource('supplier', SupplierController::class);
         Route::resource('pelanggan', PelangganController::class);
+        Route::resource('pembelian', PembelianController::class);
         // ... (Rute Admin lainnya: Pembelian, Laporan, dll.)
 
+        // Route tambahan jika diperlukan (misal: get product details for form)
+        Route::get('/ajax/produk-pembelian/{id}', [PembelianController::class, 'getProdukDetailAjax'])->name('ajax.produk-pembelian.detail');
+        Route::get('/ajax/produk/search', [AdminProdukController::class, 'searchAjax'])->name('ajax.produk.search');
     });
 
     // ==================

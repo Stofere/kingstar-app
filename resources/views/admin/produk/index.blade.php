@@ -124,40 +124,42 @@
                 }).then((result) => {
                     if (result.isConfirmed) {
                         // Kirim request hapus via AJAX untuk refresh tabel otomatis
-                        $.ajax({
-                            url: url,
-                            type: 'POST', // Method tetap POST karena ada @method('DELETE')
-                            data: $(form).serialize(), // Kirim data form (termasuk _token & _method)
-                            dataType: 'json', // Harapkan response JSON dari controller
-                            success: function(response) {
-                                if(response.success) {
-                                    Swal.fire(
-                                        'Dihapus!',
-                                        response.message,
-                                        'success'
-                                    );
-                                    table.ajax.reload(null, false); // Reload DataTables tanpa reset pagination
-                                } else {
-                                    Swal.fire(
-                                        'Gagal!',
-                                        response.message,
-                                        'error'
-                                    );
-                                }
-                            },
-                            error: function(xhr, status, error) {
-                                // Tangani error AJAX
-                                var errorMessage = 'Terjadi kesalahan saat menghapus data.';
-                                if(xhr.responseJSON && xhr.responseJSON.message) {
-                                    errorMessage = xhr.responseJSON.message;
-                                }
-                                Swal.fire(
-                                    'Error!',
-                                    errorMessage,
-                                    'error'
-                                );
-                            }
-                        });
+                        console.log('Data yang akan dikirim:', $(form).serialize());
+                        // $.ajax({
+                        //     url: url,
+                        //     type: 'POST', // Method tetap POST karena ada @method('DELETE')
+                        //     data: $(form).serialize(), // Kirim data form (termasuk _token & _method)
+                        //     dataType: 'json', // Harapkan response JSON dari controller
+                        //     success: function(response) {
+                        //         if(response.success) {
+                        //             Swal.fire(
+                        //                 'Dihapus!',
+                        //                 response.message,
+                        //                 'success'
+                        //             );
+                        //             table.ajax.reload(null, false); // Reload DataTables tanpa reset pagination
+                        //         } else {
+                        //             Swal.fire(
+                        //                 'Gagal!',
+                        //                 response.message,
+                        //                 'error'
+                        //             );
+                        //         }
+                        //     },
+                        //     error: function(xhr, status, error) {
+                        //         // Tangani error AJAX
+                        //         var errorMessage = 'Terjadi kesalahan saat menghapus data.';
+                        //         if(xhr.responseJSON && xhr.responseJSON.message) {
+                        //             errorMessage = xhr.responseJSON.message;
+                        //         }
+                        //         Swal.fire(
+                        //             'Error!',
+                        //             errorMessage,
+                        //             'error'
+                        //         );
+                        //     }
+                        // });
+                        form.submit();
                     }
                 })
             });
