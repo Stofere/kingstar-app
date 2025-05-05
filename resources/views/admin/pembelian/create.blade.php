@@ -34,11 +34,16 @@
                     {{-- Supplier --}}
                     <div class="col-md-6">
                         <label for="id_supplier" class="form-label">Supplier <span class="text-danger">*</span></label>
-                        <select class="form-select @error('id_supplier') is-invalid @enderror" id="id_supplier" name="id_supplier" required data-placeholder="Pilih Supplier">
-                            <option value=""></option> {{-- Option kosong untuk placeholder --}}
-                            @foreach ($suppliers as $id => $nama)
-                                <option value="{{ $id }}" {{ old('id_supplier') == $id ? 'selected' : '' }}>{{ $nama }}</option>
-                            @endforeach
+                        <select class="form-select @error('id_supplier') is-invalid @enderror" id="id_supplier" name="id_supplier" required data-placeholder="Cari Supplier...">
+                            <option value=""></option>
+                            @if(old('id_supplier'))
+                                @php
+                                    $oldSupplier = \App\Models\Supplier::find(old('id_supplier'));
+                                @endphp
+                                @if($oldSupplier)
+                                <option value="{{ $oldSupplier->id }}" selected>{{ $oldSupplier->nama}} {{ $oldSupplier->telepon ? '('.$oldSupplier->telepon.')' :'' }}></option>
+                                @endif
+                            @endif
                         </select>
                         @error('id_supplier') <div class="invalid-feedback">{{ $message }}</div> @enderror
                     </div>
@@ -52,8 +57,19 @@
 
                     {{-- Nomor Pembelian Internal --}}
                     <div class="col-md-6">
-                        <label for="nomor_pembelian" class="form-label">Nomor Pembelian (Internal)</label>
-                        <input type="text" class="form-control @error('nomor_pembelian') is-invalid @enderror" id="nomor_pembelian" name="nomor_pembelian" value="{{ old('nomor_pembelian') }}" placeholder="Otomatis jika kosong">
+                        <label for="nomor_pembelian" class="form-label">Nomor Pembelian</label>
+                        <input type="text" class="form-control @error('nomor_pembelian') is-invalid @enderror"
+                            id="nomor_pembelian" name="nomor_pembelian"
+                            value="{{ old('nomor_pembelian') }}"
+                            placeholder="Akan digenerate otomatis..."
+                            @if(Auth::user()->role !== 'ADMIN') readonly @endif> {{-- Kondisi readonly --}}
+                        <div class="form-text">
+                            @if(Auth::user()->role === 'ADMIN')
+                                Kosongkan untuk nomor otomatis atau isi manual (Format: PO-{{ config('app.branch_code', 'XXX') }}-ddmmyy-XXX).
+                            @else
+                                Nomor akan dibuat otomatis oleh sistem.
+                            @endif
+                        </div>
                         @error('nomor_pembelian') <div class="invalid-feedback">{{ $message }}</div> @enderror
                     </div>
 
@@ -228,20 +244,95 @@
 @endsection
 
 @push('scripts')
-    {{-- Select2 JS --}}
-    {{-- <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script> --}}
+
     {{-- InputMask or AutoNumeric (Optional, for number formatting) --}}
     {{-- <script src="https://cdnjs.cloudflare.com/ajax/libs/autonumeric/4.6.0/autoNumeric.min.js"></script> --}}
 
     <script>
         $(document).ready(function() {
-            // Inisialisasi Select2 untuk Supplier
+            // Fungsi untuk inisialisasi Select2 Supplier (dengan AJAX) sama seperti produk
             $('#id_supplier').select2({
                 theme: "bootstrap-5",
                 width: $(this).data('width') ? $(this).data('width') : $(this).hasClass('w-100') ? '100%' : 'style',
                 placeholder: $(this).data('placeholder'),
+                allowClear: true,
+                ajax: {
+                    url: "{{ route('admin.ajax.supplier.search') }}", // Route baru untuk supplier
+                    dataType: 'json',
+                    delay: 250,
+                    data: function(params) {
+                        return {
+                            q: params.term, // query pencarian
+                            page: params.page || 1
+                        };
+                    },
+                    processResults: function(data, params) {
+                        params.page = params.page || 1;
+                        return {
+                            results: data.items,
+                            pagination: {
+                                more: (params.page * 15) < data.total_count // Sesuaikan limit jika perlu
+                            }
+                        };
+                    },
+                    cache: true
+                },
+                minimumInputLength: 0, // Bisa 0 jika ingin langsung menampilkan list saat diklik
             });
 
+            function fetchAndSetPoNumber() {
+                const selectedDate = $('#tanggal_pembelian').val();
+                const nomorInput = $('#nomor_pembelian');
+
+                // Hanya fetch jika input readonly (bukan admin yang mungkin sedang input manual)
+                if (nomorInput.is('[readonly]')) {
+                    nomorInput.val('Memuat...'); // Tampilkan loading
+                    $.ajax({
+                        url: "{{ route('admin.ajax.pembelian.generate_number') }}",
+                        type: 'GET',
+                        data: { tanggal: selectedDate }, // Kirim tanggal yang dipilih
+                        dataType: 'json',
+                        success: function(response) {
+                            if (response.success) {
+                                nomorInput.val(response.nomor_pembelian);
+                            } else {
+                                nomorInput.val('Error!');
+                                // Tampilkan pesan error jika perlu
+                                console.error(response.message || 'Gagal mengambil nomor PO');
+                            }
+                        },
+                        error: function(xhr, status, error) {
+                            nomorInput.val('Error!');
+                            console.error('AJAX Error:', status, error);
+                        }
+                    });
+                } else {
+                    // Jika admin bisa edit, mungkin set placeholder saja
+                    nomorInput.attr('placeholder', 'Format: PO-{{ config('app.branch_code', 'XXX') }}-' + formatDatePlaceholder(selectedDate) + '-XXX');
+                }
+            }
+
+            // Helper untuk format tanggal placeholder ddmmyy
+            function formatDatePlaceholder(dateString) {
+                if (!dateString) return 'ddmmyy';
+                try {
+                    const date = new Date(dateString);
+                    const d = String(date.getDate()).padStart(2, '0');
+                    const m = String(date.getMonth() + 1).padStart(2, '0'); // Month is 0-indexed
+                    const y = String(date.getFullYear()).slice(-2);
+                    return d + m + y;
+                } catch (e) {
+                    return 'ddmmyy';
+                }
+            }
+
+            // Panggil saat halaman dimuat
+            fetchAndSetPoNumber();
+
+            // Panggil saat tanggal pembelian diubah
+            $('#tanggal_pembelian').on('change', function() {
+                fetchAndSetPoNumber();
+            });
             // Fungsi untuk inisialisasi Select2 Produk (dengan AJAX)
             function initializeProductSelect2(element) {
                 $(element).select2({

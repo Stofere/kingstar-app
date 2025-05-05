@@ -8,6 +8,7 @@ use App\Http\Requests\StoreSupplierRequest;
 use App\Http\Requests\UpdateSupplierRequest; 
 use Illuminate\Http\Request;
 use Yajra\DataTables\Facades\DataTables; 
+use Illuminate\Http\JsonResponse; 
 
 class SupplierController extends Controller
 {
@@ -171,5 +172,49 @@ class SupplierController extends Controller
             return redirect()->route('admin.supplier.index')
                              ->with('error', $errorMessage);
         }
+    }
+
+    /**
+     * Mencari supplier aktif berdasarkan query untuk Select2 AJAX.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function searchAjax(Request $request): JsonResponse // Tambahkan method ini
+    {
+        $searchQuery = $request->input('q');
+        $page = $request->input('page', 1);
+        $limit = 15;
+
+        // Query dasar untuk supplier yang AKTIF
+        $query = Supplier::query()->where('status', true); // <-- Filter supplier aktif
+
+        // Filter berdasarkan nama jika ada query pencarian
+        if ($searchQuery) {
+            $query->where('nama', 'LIKE', "%{$searchQuery}%");
+            // Anda bisa menambahkan pencarian di field lain jika perlu
+            // ->orWhere('telepon', 'LIKE', "%{$searchQuery}%");
+        }
+
+        // Lakukan pagination
+        $paginator = $query->select(['id', 'nama', 'telepon']) // Pilih kolom yang dibutuhkan
+                           ->orderBy('nama')
+                           ->paginate($limit, ['*'], 'page', $page);
+
+        // Format hasil untuk Select2
+        $results = collect($paginator->items())->map(function ($supplier) {
+            // Buat teks (Nama (Telepon)) - opsional
+            $telepon = $supplier->telepon ? " ({$supplier->telepon})" : "";
+            return [
+                'id' => $supplier->id,
+                'text' => $supplier->nama . $telepon
+            ];
+        });
+
+        // Kembalikan data JSON
+        return response()->json([
+            'items' => $results,
+            'total_count' => $paginator->total()
+        ]);
     }
 }

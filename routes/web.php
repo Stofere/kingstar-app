@@ -70,6 +70,8 @@ Route::middleware(['auth'])->group(function () {
         // Route tambahan jika diperlukan (misal: get product details for form)
         Route::get('/ajax/produk-pembelian/{id}', [PembelianController::class, 'getProdukDetailAjax'])->name('ajax.produk-pembelian.detail');
         Route::get('/ajax/produk/search', [AdminProdukController::class, 'searchAjax'])->name('ajax.produk.search');
+        Route::get('/ajax/supplier/search', [SupplierController::class, 'searchAjax'])->name('ajax.supplier.search');
+        Route::get('/ajax/pembelian/generate-number', [PembelianController::class, 'generateNextNumberAjax'])->name('ajax.pembelian.generate_number');
     });
 
     // ==================

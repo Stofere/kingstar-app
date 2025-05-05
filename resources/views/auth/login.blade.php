@@ -25,7 +25,7 @@
                                 <input id="username" type="text"
                                        class="form-control @error('username') is-invalid @enderror"
                                        name="username" value="{{ old('username') }}"
-                                       required autocomplete="username" autofocus
+                                       required autocomplete="off" autofocus
                                        placeholder="Masukkan username Anda"> {{-- Tambah placeholder --}}
                             </div>
                             @error('username')

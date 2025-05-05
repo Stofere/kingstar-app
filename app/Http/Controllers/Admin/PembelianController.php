@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\DB;       // Untuk Transaksi Database
 use Illuminate\Support\Facades\Auth;    // Untuk mendapatkan ID pengguna
 use Yajra\DataTables\Facades\DataTables; // Import DataTables
 use Carbon\Carbon;                      // Import Carbon untuk format tanggal
+use Illuminate\Http\JsonResponse;
+use PhpParser\Node\Stmt\Return_;
 
 class PembelianController extends Controller
 {
@@ -104,11 +106,12 @@ class PembelianController extends Controller
         // Produk mungkin diambil via AJAX di form untuk performa jika banyak
         // $produk = Produk::where('status', true)->orderBy('nama')->get(['id', 'nama', 'kode_produk']);
 
-        return view('admin.pembelian.create', compact('suppliers'));
+        return view('admin.pembelian.create');
     }
 
     /**
      * Store a newly created resource in storage.
+     * (Modified to accept optional user input for nomor_pembelian)
      *
      * @param  \App\Http\Requests\StorePembelianRequest  $request
      * @return \Illuminate\Http\RedirectResponse
@@ -116,24 +119,36 @@ class PembelianController extends Controller
     public function store(StorePembelianRequest $request)
     {
         $validated = $request->validated();
-        // Asumsi request memiliki array 'details' yang berisi:
-        // 'details' => [ ['id_produk' => x, 'jumlah' => y, 'harga_beli' => z], ... ]
-
+    
         DB::beginTransaction();
         try {
+            $nomorPembelianFinal = '';
+            $tanggalPembelian = Carbon::parse($validated['tanggal_pembelian']);
+
+            // Cek jika Admin memasukkan nomor manual dan validasi lolos
+            if (Auth::user()->role === 'ADMIN' && $request->filled('nomor_pembelian')) {
+                // Pasitkan validasi di StorePembelianRequest sudah mencakup format dan uniqueness
+                $nomorPembelianFinal = $validated['nomor_pembelian'];
+            } else {
+                // Generate nomor otomatis (gunakan tanggal dari form)
+                $nomorPembelianFinal = $this->generateNextPurchaseOrderNumber($tanggalPembelian);
+            }
+
+    
             // 1. Buat data Pembelian utama
             $pembelian = Pembelian::create([
                 'id_supplier' => $validated['id_supplier'],
-                'id_pengguna' => Auth::id(), // ID pengguna yang login
-                'nomor_pembelian' => $validated['nomor_pembelian'] ?? null,
+                'id_pengguna' => Auth::id(),
+                // Gunakan nomor yang digenerate, abaikan input user jika ada
+                'nomor_pembelian' => $nomorPembelianFinal,
                 'nomor_faktur_supplier' => $validated['nomor_faktur_supplier'] ?? null,
-                'tanggal_pembelian' => $validated['tanggal_pembelian'],
+                'tanggal_pembelian' => $tanggalPembelian->format('Y-m-d'), // Tetap gunakan tanggal dari form
                 'metode_pembayaran' => $validated['metode_pembayaran'] ?? null,
                 'status_pembayaran' => $validated['status_pembayaran'] ?? 'BELUM_LUNAS',
                 'dibayar_at' => $validated['dibayar_at'] ?? null,
                 'status_pembelian' => $validated['status_pembelian'] ?? 'DRAFT',
                 'catatan' => $validated['catatan'] ?? null,
-                'total_harga' => 0, // Akan dihitung ulang dari detail
+                'total_harga' => 0, // Akan dihitung ulang
                 'status' => $validated['status'] ?? true,
             ]);
 
@@ -163,7 +178,7 @@ class PembelianController extends Controller
             DB::commit(); // Simpan semua perubahan jika berhasil
 
             return redirect()->route('admin.pembelian.index')
-                             ->with('success', 'Pembelian baru berhasil ditambahkan.');
+                             ->with('success', 'Pembelian baru (' . $nomorPembelianFinal . ') berhasil ditambahkan.'); // Tampilkan nomor di pesan sukses
 
         } catch (\Exception $e) {
             DB::rollBack(); // Batalkan semua perubahan jika terjadi error
@@ -352,6 +367,71 @@ class PembelianController extends Controller
                 'success' => false,
                 'message' => 'Terjadi kesalahan saat menghapus data.'
             ], 500);
+        }
+    }
+
+    /**
+     * Generate the next purchase order number based on date.
+     * (Refactored logic for reuse)
+     *
+     * @param Carbon $date
+     * @return string
+     */
+    private function generateNextPurchaseOrderNumber(Carbon $date): string
+    {
+        $branchCode = config('app.branch_code', 'XXX');
+        $dateFormatted = $date->format('dmy');
+        $prefix = "PO-{$branchCode}-{$dateFormatted}-";
+
+        // Cari nomor urut terakhir untuk hari ini (menggunakan tanggal yang diberikan)
+        $lastPurchaseToday = Pembelian::where('tanggal_pembelian', $date->format('Y-m-d'))
+                                      ->where('nomor_pembelian', 'LIKE', $prefix . '%')
+                                      ->orderBy('nomor_pembelian', 'desc')
+                                      ->lockForUpdate() // Penting untuk mencegah race condition saat store
+                                      ->first();
+
+        $nextSequence = 1;
+        if ($lastPurchaseToday) {
+            $lastSequence = (int) substr($lastPurchaseToday->nomor_pembelian, strlen($prefix));
+            $nextSequence = $lastSequence + 1;
+        }
+
+        $sequenceFormatted = str_pad($nextSequence, 3, '0', STR_PAD_LEFT);
+        return $prefix . $sequenceFormatted;
+    }
+
+    /**
+     * Handle AJAX request to get the next predicted PO number.
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function generateNextNumberAjax(Request $request): JsonResponse // Method baru
+    {
+        try {
+            // Ambil tanggal dari request, default ke hari ini jika tidak ada
+            $tanggal = $request->input('tanggal') ? Carbon::parse($request->input('tanggal')) : Carbon::now();
+            // Panggil private method untuk generate nomor (tanpa lockForUpdate di sini, hanya prediksi)
+             $branchCode = config('app.branch_code', 'XXX');
+             $dateFormatted = $tanggal->format('dmy');
+             $prefix = "PO-{$branchCode}-{$dateFormatted}-";
+             $lastPurchaseToday = Pembelian::where('tanggal_pembelian', $tanggal->format('Y-m-d'))
+                                           ->where('nomor_pembelian', 'LIKE', $prefix . '%')
+                                           ->orderBy('nomor_pembelian', 'desc')
+                                           ->first(); // Tidak perlu lock untuk prediksi
+             $nextSequence = 1;
+             if ($lastPurchaseToday) {
+                 $lastSequence = (int) substr($lastPurchaseToday->nomor_pembelian, strlen($prefix));
+                 $nextSequence = $lastSequence + 1;
+             }
+             $sequenceFormatted = str_pad($nextSequence, 3, '0', STR_PAD_LEFT);
+             $nomorBerikutnya = $prefix . $sequenceFormatted;
+
+
+            return response()->json(['success' => true, 'nomor_pembelian' => $nomorBerikutnya]);
+        } catch (\Exception $e) {
+            // Log::error('Error generate PO number AJAX: '. $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Gagal memprediksi nomor pembelian.'], 500);
         }
     }
 }

@@ -81,7 +81,7 @@ return [
     */
 
     'locale' => 'id',
-
+    'branch_code' => env('APP_BRANCH_CODE', 'XXX'), // Sayua tambahkan untuk kode cabangnya
     /*
     |--------------------------------------------------------------------------
     | Application Fallback Locale
