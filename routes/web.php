@@ -83,19 +83,18 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/dashboard', [KasirDashboardController::class, 'index'])->name('dashboard');
 
         // Contoh Penjualan (oleh Kasir)
-        Route::get('/penjualan/baru', [KasirPenjualanController::class, 'create'])->name('penjualan.create');
+        Route::get('/penjualan/create', [KasirPenjualanController::class, 'create'])->name('penjualan.create');
         Route::post('/penjualan', [KasirPenjualanController::class, 'store'])->name('penjualan.store');
+        
+
+
         // ... (Rute Kasir lainnya: Lihat transaksi hari ini, Retur Penjualan, dll.)
 
-        // Contoh AJAX Endpoint untuk Penjualan (harus tetap diproteksi middleware)
-        Route::get('/ajax/produk/search', [KasirPenjualanController::class, 'searchProdukAjax'])->name('ajax.produk.search');
-        Route::get('/ajax/stok/available', [KasirPenjualanController::class, 'getAvailableStockAjax'])->name('ajax.stok.available');
-        Route::get('/ajax/stok/serials', [KasirPenjualanController::class, 'getAvailableSerialsAjax'])->name('ajax.stok.serials'); // Single Batch
-        Route::post('/ajax/stok/serials-multi', [KasirPenjualanController::class, 'getAvailableSerialsMultiBatchAjax'])->name('ajax.stok.serials-multi'); // Multi Batch
+        // ===>>> RUTE AJAX UNTUK PENJUALAN <<<===
         Route::get('/ajax/pelanggan/search', [KasirPenjualanController::class, 'searchPelangganAjax'])->name('ajax.pelanggan.search');
-        Route::post('/ajax/pelanggan/quick-store', [KasirPenjualanController::class, 'quickStorePelangganAjax'])->name('ajax.pelanggan.quickstore');
-
-
+        Route::get('/ajax/produk/search', [KasirPenjualanController::class, 'searchProdukAjax'])->name('ajax.produk.search');
+        Route::get('/ajax/stok/available', [KasirPenjualanController::class, 'getAvailableStockAjax'])->name('ajax.stok.available'); // Untuk nanti
+        Route::get('/ajax/stok/serials', [KasirPenjualanController::class, 'getAvailableSerialsAjax'])->name('ajax.stok.serials'); // Untuk nanti
     });
 
     // ==================
@@ -105,10 +104,13 @@ Route::middleware(['auth'])->group(function () {
     Route::middleware(['role:GUDANG,ADMIN'])->prefix('gudang')->name('gudang.')->group(function () {
         Route::get('/dashboard', [GudangDashboardController::class, 'index'])->name('dashboard');
 
-        // Contoh Penerimaan Barang
+        // Penerimaan Barang
         Route::get('/penerimaan', [GudangPenerimaanController::class, 'index'])->name('penerimaan.index');
-        Route::get('/penerimaan/create/{pembelian?}', [GudangPenerimaanController::class, 'create'])->name('penerimaan.create'); // Bisa dari PO atau manual
+        Route::get('/penerimaan/create/{pembelian?}', [GudangPenerimaanController::class, 'create'])->name('penerimaan.create'); // Bisa dari PO atau manual dan jg Tanda tanya (?) pada {pembelian?} menandakan parameter ini opsional.
         Route::post('/penerimaan', [GudangPenerimaanController::class, 'store'])->name('penerimaan.store');
+        // Route show (buat nnti)
+        // Route::get('/penerimaan/{penerimaan}', [GudangPenerimaanController::class, 'show'])->name('penerimaan.show');
+
         // ... (Rute Gudang lainnya: Perpindahan Stok, Stok Opname, Lihat Stok, dll.)
 
     });

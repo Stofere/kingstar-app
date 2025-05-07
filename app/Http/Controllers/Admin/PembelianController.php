@@ -68,6 +68,26 @@ class PembelianController extends Controller
                     $btnShow = '<a href="' . route('admin.pembelian.show', $row->id) . '" class="btn btn-info btn-sm me-1" title="Lihat Detail"><i class="bi bi-eye"></i></a>';
                     $btnEdit = '';
                     $btnDelete = '';
+                    $btnProsesPenerimaan = ''; // Variabel baru untuk tombol penerimaan
+
+                    // ===>>> LOGIKA TOMBOL PROSES PENERIMAAN <<<===
+                    // Tampilkan tombol jika status 'DIPESAN' atau 'TIBA_SEBAGIAN'
+                    // dan jika masih ada item yang belum diterima penuh (ini perlu dicek lebih detail jika mau)
+                    if (in_array($row->status_pembelian, ['DIPESAN', 'TIBA_SEBAGIAN'])) {
+                        // Cek apakah masih ada item yang bisa diterima
+                        // Ini bisa menjadi query tambahan atau flag di model Pembelian
+                        // Untuk sederhana, kita tampilkan jika statusnya memungkinkan
+                        $masihBisaDiterima = true; // Asumsi awal, idealnya ada pengecekan
+                        // Contoh pengecekan (membutuhkan relasi detailPembelian):
+                        // $masihBisaDiterima = $row->detailPembelian()->whereRaw('jumlah > jumlah_diterima')->exists();
+
+                        if ($masihBisaDiterima) {
+                             $btnProsesPenerimaan = '<a href="' . route('gudang.penerimaan.create', ['pembelian' => $row->id]) . '" class="btn btn-success btn-sm me-1" title="Proses Penerimaan Barang">
+                                                        <i class="bi bi-box-arrow-in-down"></i> Terima
+                                                    </a>';
+                        }
+                    }
+                    // ===>>> AKHIR LOGIKA <<<===
 
                     // Logika kondisional untuk tombol Edit
                     if (in_array($row->status_pembelian, ['DRAFT', 'DIPESAN'])) {
@@ -83,7 +103,7 @@ class PembelianController extends Controller
                                     </form>';
                     }
 
-                    return $btnShow . $btnEdit . $btnDelete;
+                    return $btnProsesPenerimaan . $btnShow . $btnEdit . $btnDelete;
                 })
                 // Memberitahu DataTables bahwa kolom ini berisi HTML mentah
                 ->rawColumns(['supplier_nama', 'status_pembelian_badge', 'status_pembayaran_badge', 'action'])
@@ -432,6 +452,6 @@ class PembelianController extends Controller
         } catch (\Exception $e) {
             // Log::error('Error generate PO number AJAX: '. $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Gagal memprediksi nomor pembelian.'], 500);
-        }
+        } 
     }
 }

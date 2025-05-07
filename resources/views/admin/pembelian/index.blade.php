@@ -64,8 +64,6 @@
 @push('scripts')
     {{-- SweetAlert2 --}}
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
-    {{-- Inisialisasi DataTables --}}
     <script>
         $(document).ready(function() {
             var table = $('#pembelian-table').DataTable({
@@ -84,7 +82,7 @@
                     { data: 'status_pembelian_badge', name: 'status_pembelian', orderable: false, searchable: false }, // 'status_pembelian_badge' (HTML badge) harus dikirim dari controller
                     { data: 'status_pembayaran_badge', name: 'status_pembayaran', orderable: false, searchable: false }, // 'status_pembayaran_badge' (HTML badge) harus dikirim dari controller
                     // Kolom aksi (HTML tombol) - 'action' harus dikirim dari controller
-                    { data: 'action', name: 'action', orderable: false, searchable: false, width: '10%', className: 'action-buttons text-center' }
+                    { data: 'action', name: 'action', orderable: false, searchable: false, width: '15%', className: 'action-buttons text-center' }
                 ],
                 language: { // Terjemahan Bahasa Indonesia
                     url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/id.json',

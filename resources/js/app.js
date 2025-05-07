@@ -14,6 +14,9 @@ require("select2");
 require("datatables.net-bs5");
 require("datatables.net-responsive-bs5");
 
+// import input mask
+require("jquery.inputmask");
+
 // Inisialisasi global atau event listener umum bisa ditaruh di sini
 // Contoh: Inisialisasi tooltip Bootstrap di seluruh aplikasi
 document.addEventListener("DOMContentLoaded", function () {
