@@ -13,7 +13,7 @@ class ProdukFactory extends Factory
 
     public function definition()
     {
-        $namaProduk = $this->faker->randomElement(['Mixer', 'Speaker Aktif', 'Speaker Pasif', 'Power Amplifier', 'Microphone Kabel', 'Microphone Wireless', 'Kabel XLR', 'Stand Mic', 'Moving Head Beam', 'PAR LED', 'Smoke Machine', 'Hardcase']);
+        $namaProduk = $this->faker->randomElement(['Yamaha Speaker', 'Huper160', 'PartyBox', 'Power Amplifier', 'Microphone Kabel', 'Microphone Wireless', 'Kabel XLR', 'Stand Mic', 'Moving Head Beam', 'PAR LED', 'Smoke Machine', 'Hardcase']);
         $memilikiSerial = $this->faker->boolean(60); // 60% kemungkinan punya serial
 
         return [

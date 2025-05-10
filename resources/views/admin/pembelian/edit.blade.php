@@ -24,7 +24,7 @@
     <form action="{{ route('admin.pembelian.update', $pembelian->id) }}" method="POST" id="form-pembelian">
         @csrf
         @method('PUT') {{-- Method spoofing untuk update --}}
-
+        
         {{-- Include partial form --}}
         {{-- Variabel $pembelian dan $suppliers otomatis tersedia dari controller --}}
         @include('admin.pembelian.form')
@@ -140,6 +140,7 @@
              $('#status_pembayaran').on('change', function() {
                 if ($(this).val() === 'LUNAS') {
                     $('#tanggal-bayar-group').slideDown();
+                    $('#dibayar_at').removeAttr('required');
                 } else {
                     $('#tanggal-bayar-group').slideUp();
                     $('#dibayar_at').val('');

@@ -67,7 +67,7 @@
             $('#pengguna-table').DataTable({
                 responsive: true,
                 language: { // Opsi untuk bahasa Indonesia DataTables
-                    url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/id.json',
+                    url: 'https://cdn.datatables.net/plug-ins/1.13.7/i18n/id.json',
                 },
             });
 

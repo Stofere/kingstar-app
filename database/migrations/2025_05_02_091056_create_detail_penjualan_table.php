@@ -17,7 +17,6 @@ class CreateDetailPenjualanTable extends Migration
             $table->id();
             // Foreign keys
             $table->foreignId('id_penjualan')->constrained('penjualan')->onDelete('cascade'); // Cascade jika penjualan dihapus
-            $table->foreignId('id_stok_barang')->constrained('stok_barang')->onDelete('restrict')->comment('Batch spesifik yg dijual');
             $table->unsignedInteger('jumlah')->comment('Jumlah dijual dari batch ini');
             $table->decimal('harga_jual', 15, 2)->comment('Harga jual satuan final (nego)');
             $table->string('nomor_seri_terjual')->nullable()->index()->comment('Nomor seri spesifik (jika produk berserial)');
@@ -37,6 +36,9 @@ class CreateDetailPenjualanTable extends Migration
      */
     public function down()
     {
+        // Drop the dependent table first
+        Schema::dropIfExists('detail_penjualan_stok_alokasi');
+        // Then drop this table
         Schema::dropIfExists('detail_penjualan');
     }
 }

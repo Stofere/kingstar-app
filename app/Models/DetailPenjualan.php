@@ -13,7 +13,6 @@ class DetailPenjualan extends Model
 
     protected $fillable = [
         'id_penjualan',
-        'id_stok_barang',
         'jumlah',
         'harga_jual',
         'nomor_seri_terjual',
@@ -35,15 +34,20 @@ class DetailPenjualan extends Model
         return $this->belongsTo(Penjualan::class, 'id_penjualan');
     }
 
-    // Relasi: DetailPenjualan belongs to StokBarang (batch yang dijual)
-    public function stokBarang()
-    {
-        return $this->belongsTo(StokBarang::class, 'id_stok_barang');
-    }
+    // saya hapus karena buat multi batch jadi tidak lagi memakai relasi ini lagi, untuk Relasi: DetailPenjualan belongs to StokBarang (batch yang dijual)
+    // public function stokBarang()
+    // {
+    //     return $this->belongsTo(StokBarang::class, 'id_stok_barang');
+    // }
 
     // Relasi: DetailPenjualan bisa memiliki satu ReturPenjualan
     public function returPenjualan()
     {
         return $this->hasOne(ReturPenjualan::class, 'id_detail_penjualan');
+    }
+
+    public function stokAlokasi()
+    {
+        return $this->hasMany(DetailPenjualanStokAlokasi::class, 'id_detail_penjualan');
     }
 }

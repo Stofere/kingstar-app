@@ -22,6 +22,12 @@ class UpdatePembelianRequest extends FormRequest
             'nomor_pembelian' => ['nullable', 'string', 'max:100', Rule::unique('pembelian')->ignore($pembelianId)],
             'nomor_faktur_supplier' => 'nullable|string|max:100',
             'status_pembelian' => ['required', Rule::in(['DRAFT', 'DIPESAN', 'PENGIRIMAN', 'TIBA_SEBAGIAN', 'SELESAI', 'DIBATALKAN'])],
+            'status_pembayaran' => ['required', Rule::in(['BELUM_LUNAS', 'LUNAS', 'JATUH_TEMPO'])],
+            'dibayar_at' => ['nullable', 'date', function ($attribute, $value, $fail) {
+                if (request()->input('status_pembayaran') === 'LUNAS' && empty($value)) {
+                    $fail('Tanggal pembayaran harus diisi ketika status pembayaran LUNAS.');
+                }
+            }],
             'catatan' => 'nullable|string',
             // Validasi untuk Detail (Array)
             'details' => 'required|array|min:1',

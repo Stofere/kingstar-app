@@ -84,8 +84,8 @@
                     // Kolom aksi (HTML tombol) - 'action' harus dikirim dari controller
                     { data: 'action', name: 'action', orderable: false, searchable: false, width: '15%', className: 'action-buttons text-center' }
                 ],
-                language: { // Terjemahan Bahasa Indonesia
-                    url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/id.json',
+                language: { 
+                    url: 'https://cdn.datatables.net/plug-ins/1.13.7/i18n/id.json',
                     processing: '<div class="spinner-border text-primary spinner-border-sm" role="status"><span class="visually-hidden">Memuat...</span></div>' // Indikator loading custom
                 },
                 order: [[ 3, "desc" ]] // Default order by tanggal pembelian (indeks kolom 3) descending

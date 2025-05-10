@@ -92,4 +92,17 @@ class StokBarang extends Model
      {
          return $this->hasMany(LogNomorSeri::class, 'id_stok_barang_asal');
      }
+
+    public function detailPenjualanAllocations()
+    {
+        return $this->hasMany(DetailPenjualanStokAlokasi::class, 'id_stok_barang');
+    }
+
+    // Relasi many-to-many ke DetailPenjualan melalui tabel junction
+    public function detailPenjualans()
+    {
+        return $this->belongsToMany(DetailPenjualan::class, 'detail_penjualan_stok_alokasi', 'id_stok_barang', 'id_detail_penjualan')
+                    ->withPivot('jumlah_diambil')
+                    ->withTimestamps();
+    }
 }

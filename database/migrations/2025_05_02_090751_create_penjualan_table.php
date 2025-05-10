@@ -20,6 +20,7 @@ class CreatePenjualanTable extends Migration
             $table->foreignId('id_pengguna')->constrained('pengguna')->onDelete('restrict');
             $table->string('nomor_penjualan', 100)->unique()->comment('Nomor nota/transaksi unik toko');
             $table->dateTime('tanggal_penjualan')->index()->comment('Waktu transaksi dibuat/selesai');
+            $table->decimal('diskon_nominal', 15, 2)->default(0.00)->comment('Diskon tambahan level transaksi');
             $table->decimal('total_harga', 15, 2)->default(0.00);
             $table->string('metode_pembayaran', 50)->nullable()->comment('TUNAI, QRIS, TRANSFER BCA');
             $table->string('kanal_transaksi', 50)->default('TOKO')->comment('TOKO, TOKOPEDIA, SHOPEE');

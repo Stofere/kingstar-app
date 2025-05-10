@@ -20,7 +20,7 @@ class PenggunaSeeder extends Seeder
 
         // Buat User Admin Utama
         Pengguna::create([
-            'nama' => 'Admin Kingstar',
+            'nama' => 'Andreas Wijaya',
             'username' => 'admin',
             'password' => Hash::make('admin123'), // Ganti dengan password aman
             'role' => 'ADMIN',
@@ -46,6 +46,6 @@ class PenggunaSeeder extends Seeder
         ]);
 
         // Buat beberapa user dummy tambahan (opsional)
-        Pengguna::factory()->count(5)->create(); // Buat 5 user dengan role acak
+        Pengguna::factory()->count(2)->create(); // Buat 5 user dengan role acak
     }
 }

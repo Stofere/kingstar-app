@@ -16,6 +16,7 @@ class Penjualan extends Model
         'id_pengguna',
         'nomor_penjualan',
         'tanggal_penjualan',
+        'diskon_nominal',
         'total_harga',
         'metode_pembayaran',
         'kanal_transaksi',
@@ -33,6 +34,7 @@ class Penjualan extends Model
 
     protected $casts = [
         'tanggal_penjualan' => 'datetime',
+        'diskon_nominal' => 'decimal:2',
         'total_harga' => 'decimal:2',
         'uang_muka' => 'decimal:2',
         'sisa_pembayaran' => 'decimal:2',
