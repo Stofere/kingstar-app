@@ -95,6 +95,7 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/ajax/produk/search', [KasirPenjualanController::class, 'searchProdukAjax'])->name('ajax.produk.search');
         Route::get('/ajax/stok/available', [KasirPenjualanController::class, 'getAvailableStockAjax'])->name('ajax.stok.available'); // Untuk nanti
         Route::get('/ajax/stok/serials', [KasirPenjualanController::class, 'getAvailableSerialsAjax'])->name('ajax.stok.serials'); // Untuk nanti
+        Route::get('/ajax/batch/available', [KasirPenjualanController::class, 'getAvailableBatchesAjax'])->name('ajax.batch.available');
     });
 
     // ==================

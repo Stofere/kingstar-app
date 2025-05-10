@@ -100,7 +100,7 @@
                     { data: 'action', name: 'action', orderable: false, searchable: false, width: '10%' } // Kolom aksi
                 ],
                 language: { // Opsi untuk bahasa Indonesia DataTables
-                    url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/id.json',
+                    url: 'http://cdn.datatables.net/plug-ins/1.13.7/i18n/id.json',
                     processing: '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>' // Custom loading indicator
                 },
                 order: [[2, 'asc']] // Default order by kolom ke-3 (Nama Produk) ascending

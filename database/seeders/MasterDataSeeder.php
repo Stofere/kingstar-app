@@ -18,14 +18,14 @@ class MasterDataSeeder extends Seeder
     {
         // Seed Merk
         $this->command->info('Seeding Merk...');
-        Merk::factory()->count(10)->create(); // Buat 10 merk
+        Merk::factory()->count(5)->create(); 
 
         // Seed Supplier
         $this->command->info('Seeding Supplier...');
-        Supplier::factory()->count(15)->create(); // Buat 15 supplier
+        Supplier::factory()->count(5)->create(); 
 
         // Seed Pelanggan
         $this->command->info('Seeding Pelanggan...');
-        Pelanggan::factory()->count(30)->create(); // Buat 30 pelanggan
+        Pelanggan::factory()->count(5)->create(); 
     }
 }

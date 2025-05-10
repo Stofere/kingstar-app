@@ -9,6 +9,7 @@ use Carbon\Carbon;
 use App\Models\Pelanggan; 
 use App\Models\Produk;  
 use App\Models\StokBarang; // Import StokBarang untuk cek ketersediaan nanti
+use App\Models\LogNomorSeri;
 
 class PenjualanController extends Controller
 {
@@ -126,5 +127,59 @@ class PenjualanController extends Controller
         ]);
     }
 
+    /**
+     * Handle AJAX request to get available batches/serials for a product.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getAvailableBatchesAjax(Request $request)
+    {
+        $idProduk = $request->input('id_produk');
+        $qtyDibutuhkan = (int) $request->input('qty_dibutuhkan', 1);
+
+        if (!$idProduk || $qtyDibutuhkan <= 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Parameter tidak valid'
+            ], 400);
+        }
+
+        // Ambil stok yang tersedia untuk produk ini, urutkan berdasarkan FIFO
+        $stokTersedia = StokBarang::where('id_produk', $idProduk)
+            ->where('jumlah', '>', 0)
+            ->where('kondisi', 'BAIK')
+            ->where('tipe_stok', 'REGULER') // Hanya stok reguler, bukan konsinyasi
+            ->orderBy('diterima_at', 'ASC') // FIFO: barang masuk pertama, keluar pertama
+            ->get();
+
+        $results = [];
+        foreach ($stokTersedia as $stok) {
+            $batch = [
+                'id' => $stok->id,
+                'diterima_at' => $stok->diterima_at->format('d M Y'),
+                'jumlah_tersedia' => $stok->jumlah,
+                'harga_beli' => $stok->harga_beli,
+                'tipe_garansi' => $stok->tipe_garansi,
+                'nomor_seri' => []
+            ];
+
+            // Jika produk memiliki serial, ambil nomor seri yang tersedia
+            if ($stok->produk->memiliki_serial) {
+                $nomorSeri = LogNomorSeri::where('id_stok_barang_asal', $stok->id)
+                    ->where('status_log', 'DITERIMA')
+                    ->pluck('nomor_seri')
+                    ->toArray();
+                $batch['nomor_seri'] = $nomorSeri;
+            }
+
+            $results[] = $batch;
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $results
+        ]);
+    }
     // ... (method store akan dibuat nanti) ...
 }

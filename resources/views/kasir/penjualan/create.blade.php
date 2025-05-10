@@ -703,18 +703,155 @@
                 $('#qty-dibutuhkan-info').text(qtyDibutuhkan);
                 $('#daftar-batch-tersedia').html('<p class="text-center">Memuat daftar batch...</p>');
 
-                // Placeholder AJAX Call
-                setTimeout(function(){
-                     $('#daftar-batch-tersedia').html(`
-                        <div class="alert alert-warning">Fitur pemilihan batch/serial via AJAX belum diimplementasikan.</div>
-                    `);
-                }, 500);
+                // AJAX Call untuk mengambil data batch
+                $.ajax({
+                    url: "{{ route('kasir.ajax.batch.available') }}",
+                    method: 'GET',
+                    data: {
+                        id_produk: idProduk,
+                        qty_dibutuhkan: qtyDibutuhkan
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            let html = '';
+                            if (response.data.length === 0) {
+                                html = '<div class="alert alert-warning">Tidak ada stok tersedia untuk produk ini.</div>';
+                            } else {
+                                html = '<div class="table-responsive"><table class="table table-sm table-hover">';
+                                html += '<thead><tr>';
+                                html += '<th>Tanggal Terima</th>';
+                                html += '<th class="text-center">Stok Tersedia</th>';
+                                html += '<th class="text-center">Qty Ambil</th>';
+                                if (produkData.memiliki_serial) {
+                                    html += '<th>Nomor Seri</th>';
+                                }
+                                html += '<th>Garansi</th>';
+                                html += '</tr></thead><tbody>';
+
+                                // FIFO logic: prefill only as needed
+                                let qtySisa = qtyDibutuhkan;
+                                response.data.forEach(function(batch) {
+                                    let qtyAmbil = 0;
+                                    if (qtySisa > 0) {
+                                        qtyAmbil = Math.min(batch.jumlah_tersedia, qtySisa);
+                                        qtySisa -= qtyAmbil;
+                                    }
+                                    const isRecommended = qtyAmbil > 0;
+                                    html += `<tr class="${isRecommended ? 'table-success' : ''}">`;
+                                    html += `<td>${batch.diterima_at}</td>`;
+                                    html += `<td class="text-center">${batch.jumlah_tersedia}</td>`;
+                                    html += `<td class="text-center">`;
+                                    html += `<input type="number" class="form-control form-control-sm batch-qty" 
+                                        data-batch-id="${batch.id}" 
+                                        data-max="${batch.jumlah_tersedia}"
+                                        min="0" max="${batch.jumlah_tersedia}" 
+                                        value="${qtyAmbil}">`;
+
+                                    html += `</td>`;
+                                    
+                                    if (produkData.memiliki_serial) {
+                                        html += `<td>`;
+                                        if (batch.nomor_seri && batch.nomor_seri.length > 0) {
+                                            html += `<select class="form-select form-select-sm batch-serial" multiple data-batch-id="${batch.id}">`;
+                                            batch.nomor_seri.forEach(function(serial, idx) {
+                                                // Otomatis pilih serial sesuai qtyAmbil
+                                                const selected = idx < qtyAmbil ? 'selected' : '';
+                                                html += `<option value="${serial}" ${selected}>${serial}</option>`;
+                                            });
+                                            html += `</select>`;
+                                        } else {
+                                            html += '<span class="text-muted">Tidak ada nomor seri</span>';
+                                        }
+                                        html += `</td>`;
+                                    }
+                                    
+                                    html += `<td>${batch.tipe_garansi}</td>`;
+                                    html += `</tr>`;
+                                });
+
+                                html += '</tbody></table></div>';
+                            }
+                            $('#daftar-batch-tersedia').html(html);
+
+                            // Inisialisasi Select2 untuk nomor seri jika ada
+                            $('.batch-serial').select2({
+                                theme: "bootstrap-5",
+                                width: '100%',
+                                placeholder: 'Pilih nomor seri...',
+                                allowClear: true
+                            });
+                        } else {
+                            $('#daftar-batch-tersedia').html('<div class="alert alert-danger">Gagal memuat data batch.</div>');
+                        }
+                    },
+                    error: function() {
+                        $('#daftar-batch-tersedia').html('<div class="alert alert-danger">Terjadi kesalahan saat memuat data batch.</div>');
+                    }
+                });
                 $('#modalPilihBatchSerial').modal('show');
             });
 
             $('#btn-simpan-pilihan-batch').on('click', function() {
-                // Logika simpan pilihan batch akan diimplementasikan nanti
-                Swal.fire('Placeholder', 'Logika simpan pilihan batch belum diimplementasikan.', 'info');
+                const rowId = $('#modal_batch_item_row_id').val();
+                const row = $(`#tabel-item-penjualan tbody tr[data-row-id="${rowId}"]`);
+                const produkData = row.find('.select2-produk-item').select2('data')[0];
+                const qtyDibutuhkan = parseInt($('#modal_batch_qty_dibutuhkan').val()) || 0;
+                
+                let totalQtySelected = 0;
+                let selectedBatchIds = [];
+                let selectedSerials = [];
+
+                // Hitung total qty yang dipilih
+                $('.batch-qty').each(function() {
+                    const qty = parseInt($(this).val()) || 0;
+                    if (qty > 0) {
+                        totalQtySelected += qty;
+                        const batchId = $(this).data('batch-id');
+                        selectedBatchIds.push(batchId);
+
+                        // Jika produk memiliki serial, ambil nomor seri yang dipilih
+                        if (produkData.memiliki_serial) {
+                            const serialSelect = $(`.batch-serial[data-batch-id="${batchId}"]`);
+                            if (serialSelect.length) {
+                                const selectedSerialsForBatch = serialSelect.val() || [];
+                                selectedSerials = selectedSerials.concat(selectedSerialsForBatch);
+                            }
+                        }
+                    }
+                });
+
+                // Validasi
+                if (totalQtySelected !== qtyDibutuhkan) {
+                    Swal.fire('Oops!', `Total qty yang dipilih (${totalQtySelected}) harus sama dengan qty dibutuhkan (${qtyDibutuhkan}).`, 'warning');
+                    return;
+                }
+
+                if (produkData.memiliki_serial && selectedSerials.length !== qtyDibutuhkan) {
+                    Swal.fire('Oops!', `Jumlah nomor seri yang dipilih (${selectedSerials.length}) harus sama dengan qty dibutuhkan (${qtyDibutuhkan}).`, 'warning');
+                    return;
+                }
+
+                // Update row dengan data batch yang dipilih
+                row.find('input[name$="[id_stok_barang]"]').val(selectedBatchIds.join(','));
+                if (produkData.memiliki_serial) {
+                    row.find('input[name$="[nomor_seri_terjual]"]').val(selectedSerials.join(','));
+                }
+
+                // Update tampilan tombol batch
+                const batchInfo = selectedBatchIds.length > 1 ? 
+                    `${selectedBatchIds.length} batch dipilih` : 
+                    `Batch ${selectedBatchIds[0]} dipilih`;
+                row.find('.selected-batch-info').text(batchInfo);
+                row.find('.btn-pilih-batch-serial').removeClass('btn-outline-danger').addClass('btn-outline-secondary');
+
+                // Update info serial jika ada
+                if (produkData.memiliki_serial) {
+                    const serialText = selectedSerials.length > 0 ? 
+                        `Serial: ${selectedSerials.join(', ')}` : 
+                        'Belum ada serial dipilih';
+                    row.find('.serial-info-display').text(serialText).removeClass('text-danger fw-bold');
+                }
+
                 $('#modalPilihBatchSerial').modal('hide');
             });
 
