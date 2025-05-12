@@ -283,7 +283,7 @@
                 <input type="hidden" id="modal_batch_qty_dibutuhkan">
 
                 <div class="alert alert-info">
-                    <p class="mb-1">Anda membutuhkan <strong id="qty-dibutuhkan-info-modal">X</strong> unit untuk produk: <strong id="nama-produk-modal-batch">Nama Produk</strong>.</p>
+                    <p class="mb-1">Anda membutuhkan <strong id="qty-dibutuhkan-info-modal">X</strong> unit untuk produk: <strong id="nama-produk-modal-alert">Nama Produk</strong>.</p>
                     <p class="mb-0" id="info-total-stok-modal">Total stok tersedia: Y unit.</p>
                 </div>
 
@@ -532,6 +532,7 @@
                 }).on('select2:select', function(e) { // permasalahan di sini untuk data harga_jual_standar yang dibaca dari db contoh 120000,00 nah dibaca sama halaman ini menjadi 12.000.0 00 menambahkan 00 dibelakang. sudah fixed
                 const data = e.params.data; // data.harga_jual_standar dari AJAX
                 const currentRow = $(this).closest('.item-penjualan-row');
+                const idProduk = data.id;
 
                 // Ambil harga standar dari data AJAX
                 let hargaStandarDariAjax = data.harga_jual_standar; // Ini bisa jadi float 120000.00 atau string "120000.00"
@@ -561,7 +562,7 @@
 
 
                 currentRow.find('.btn-pilih-batch-serial').prop('disabled', false);
-                currentRow.find('.stok-produk-info').text('?'); // Akan diupdate setelah pilih batch
+                currentRow.find('.stok-produk-info').text('?'); 
 
                 if(data.memiliki_serial){
                     currentRow.find('.serial-info-display').text('Wajib Serial').addClass('text-danger');
@@ -732,6 +733,7 @@
                 $('#modal_batch_id_produk').val(idProduk);
                 $('#modal_batch_qty_dibutuhkan_total').val(currentQtyDibutuhkanTotalModal);
                 $('#nama-produk-modal-batch').text(namaProduk);
+                $('#nama-produk-modal-alert').text(namaProduk);
                 $('#qty-dibutuhkan-info-modal').text(currentQtyDibutuhkanTotalModal);
                 $('#batch-allocation-details').html('<div class="text-center p-3"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Memuat batch tersedia...</p></div>');
                 $('#serial-selection-area-multi').empty().hide(); // Serial area utama disembunyikan dulu

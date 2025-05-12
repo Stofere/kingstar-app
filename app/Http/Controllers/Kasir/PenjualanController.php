@@ -115,16 +115,16 @@ class PenjualanController extends Controller
 
         $results = $produk->map(function ($item) {
             // Cek ketersediaan stok sederhana (bisa dioptimalkan nanti)
-            // $stokTersedia = StokBarang::where('id_produk', $item->id)
-            //                             ->where('jumlah', '>', 0)
-            //                             ->where('kondisi', 'BAIK') // Hanya stok kondisi baik
-            //                             ->sum('jumlah');
+            $stokTersedia = StokBarang::where('id_produk', $item->id)
+                                        ->where('jumlah', '>', 0)
+                                        ->where('kondisi', 'BAIK') // Hanya stok kondisi baik
+                                        ->sum('jumlah');
             return [
                 'id' => $item->id,
                 'text' => $item->nama . ($item->kode_produk ? " ({$item->kode_produk})" : ''),
                 'harga_jual_standar' => $item->harga_jual_standart,
                 'memiliki_serial' => (bool) $item->memiliki_serial,
-                // 'stok_tersedia' => $stokTersedia // Info stok bisa diambil saat pemilihan batch
+                'stok_tersedia' => $stokTersedia // Info stok bisa diambil saat pemilihan batch
             ];
         });
 
