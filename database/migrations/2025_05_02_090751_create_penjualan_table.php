@@ -24,10 +24,10 @@ class CreatePenjualanTable extends Migration
             $table->decimal('total_harga', 15, 2)->default(0.00);
             $table->string('metode_pembayaran', 50)->nullable()->comment('TUNAI, QRIS, TRANSFER BCA');
             $table->string('kanal_transaksi', 50)->default('TOKO')->comment('TOKO, TOKOPEDIA, SHOPEE');
-            $table->string('tipe_transaksi', 50)->default('BIASA')->comment('BIASA, PRE_ORDER');
-            $table->decimal('uang_muka', 15, 2)->nullable()->comment('Jika PRE_ORDER');
-            $table->decimal('sisa_pembayaran', 15, 2)->nullable()->comment('Jika PRE_ORDER');
-            $table->date('estimasi_kirim_at')->nullable()->comment('Jika PRE_ORDER');
+            $table->string('tipe_transaksi', 50)->default('BIASA')->comment('BIASA, PESAN_BARANG');
+            $table->decimal('uang_muka', 15, 2)->nullable()->comment('Jika PESAN_BARANG');
+            $table->decimal('sisa_pembayaran', 15, 2)->nullable()->comment('Jika PESAN_BARANG');
+            $table->date('estimasi_kirim_at')->nullable()->comment('Jika PESAN_BARANG');
             $table->string('status_pembayaran', 50)->index()->comment('LUNAS, BELUM_LUNAS, DP');
             $table->date('dibayar_at')->nullable()->comment('Tanggal lunas');
             $table->string('status_penjualan', 50)->default('PROSES')->index()->comment('PROSES, MENUNGGU_BARANG, SIAP_DIKIRIM, PENGIRIMAN, SELESAI, DIBATALKAN, STOK_TIDAK_CUKUP, MENUNGGU_PELUNASAN');

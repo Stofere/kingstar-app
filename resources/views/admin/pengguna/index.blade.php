@@ -93,5 +93,5 @@
         });
     </script>
      {{-- Pastikan SweetAlert2 sudah di-load, bisa via CDN di app.blade.php atau npm --}}
-     <script src="//cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 @endpush

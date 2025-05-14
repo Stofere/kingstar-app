@@ -13,8 +13,12 @@ class DetailPenjualan extends Model
 
     protected $fillable = [
         'id_penjualan',
+        'id_produk',
         'jumlah',
         'harga_jual',
+        'nama_produk_snapshot', 
+        'kode_produk_snapshot', 
+        'subtotal', 
         'nomor_seri_terjual',
         'status_bayar_konsinyasi',
         'customer_garansi_mulai_at',
@@ -24,6 +28,7 @@ class DetailPenjualan extends Model
 
     protected $casts = [
         'harga_jual' => 'decimal:2',
+        'subtotal' => 'decimal:2',
         'customer_garansi_mulai_at' => 'date',
         'customer_garansi_berakhir_at' => 'date',
     ];

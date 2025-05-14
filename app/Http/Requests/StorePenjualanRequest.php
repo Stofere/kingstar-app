@@ -35,7 +35,7 @@ class StorePenjualanRequest extends FormRequest
             'pelanggan_baru_telepon' => ['nullable', 'string', 'max:20'],
             'pelanggan_baru_alamat' => ['nullable', 'string'],
             'kanal_transaksi' => ['required', Rule::in(['TOKO', 'TOKOPEDIA', 'SHOPEE'])],
-            'tipe_transaksi' => ['required', Rule::in(['BIASA', 'PRE_ORDER'])],
+            'tipe_transaksi' => ['required', Rule::in(['BIASA', 'PESAN_BARANG'])],
             'metode_pembayaran' => ['required', 'string', 'max:50'], // Sesuaikan dengan daftar metode Anda
             'total_harga' => ['required', 'numeric', 'min:0'],
             'catatan' => ['nullable', 'string'],
@@ -44,10 +44,15 @@ class StorePenjualanRequest extends FormRequest
             'items.*.id_produk' => ['required', 'exists:produk,id'],
             'items.*.jumlah' => ['required', 'integer', 'min:1'],
             'items.*.harga_jual' => ['required', 'numeric', 'min:0'],
-            'items.*.stok_allocations' => ['required', 'json'], // Validasi bahwa ini adalah string JSON
+            'items.*.stok_allocations' => [
+                Rule::requiredIf(function () {
+                    return $this->input('tipe_transaksi') === 'BIASA';
+                }),
+                'json'
+            ],
         ];
 
-        if ($this->input('tipe_transaksi') === 'PRE_ORDER') {
+        if ($this->input('tipe_transaksi') === 'PESAN_BARANG') {
             $rules['uang_muka'] = ['required', 'numeric', 'min:0', 'lte:total_harga']; // DP tidak boleh > total
             $rules['estimasi_kirim_at'] = ['nullable', 'date', 'after_or_equal:tanggal_penjualan'];
             // Uang bayar (pelunasan) untuk PO bisa opsional saat create, tergantung alur
@@ -72,6 +77,7 @@ class StorePenjualanRequest extends FormRequest
             'items.required' => 'Minimal harus ada satu item dalam transaksi.',
             'items.min' => 'Minimal harus ada satu item dalam transaksi.',
             'items.*.id_produk.required' => 'Produk wajib dipilih untuk setiap item.',
+            'items.*.id_produk.exists' => 'Produk yang dipilih tidak valid.',
             'items.*.jumlah.required' => 'Jumlah wajib diisi untuk setiap item.',
             'items.*.jumlah.min' => 'Jumlah item minimal 1.',
             'items.*.harga_jual.required' => 'Harga jual wajib diisi untuk setiap item.',
@@ -96,12 +102,25 @@ class StorePenjualanRequest extends FormRequest
             $items = $this->input('items', []);
             $totalHargaDariForm = (float) $this->input('total_harga', 0);
             $calculatedTotalHarga = 0;
-            $isPreOrder = $this->input('tipe_transaksi') === 'PRE_ORDER';
+            $isPreOrder = $this->input('tipe_transaksi') === 'PESAN_BARANG';
             $uangBayar = (float) $this->input('uang_bayar', 0);
             $uangMuka = (float) $this->input('uang_muka', 0);
 
             foreach ($items as $key => $item) {
-                $itemIndexForMessage = $key + 1; // Untuk pesan error
+                $itemIndexForMessage = $key + 1;
+                
+                // Validasi id_produk ada dan valid
+                if (!isset($item['id_produk']) || empty($item['id_produk'])) {
+                    $validator->errors()->add("items.{$key}.id_produk", "ID Produk wajib diisi untuk item ke-{$itemIndexForMessage}.");
+                    continue;
+                }
+
+                $produk = Produk::find($item['id_produk']);
+                if (!$produk) {
+                    $validator->errors()->add("items.{$key}.id_produk", "Produk dengan ID {$item['id_produk']} tidak ditemukan untuk item ke-{$itemIndexForMessage}.");
+                    continue;
+                }
+
                 $jumlahItem = (int)($item['jumlah'] ?? 0);
                 $hargaJualItem = (float)($item['harga_jual'] ?? 0);
                 $calculatedTotalHarga += ($jumlahItem * $hargaJualItem);
@@ -125,11 +144,6 @@ class StorePenjualanRequest extends FormRequest
 
 
                 $totalQtyFromAllocations = 0;
-                $produk = Produk::find($item['id_produk'] ?? null);
-
-                if (!$produk) { // Seharusnya sudah dicek exists
-                    continue;
-                }
 
                 foreach ($allocations as $allocKey => $alloc) {
                     $allocIndexForMessage = $allocKey + 1;

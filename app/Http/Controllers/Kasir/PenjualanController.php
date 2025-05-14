@@ -32,10 +32,10 @@ class PenjualanController extends Controller
             'DEBIT_MANDIRI' => 'Debit Mandiri', 'KARTU_KREDIT' => 'Kartu Kredit',
         ];
         $kanalTransaksi = [
-            'TOKO' => 'Toko Fisik', 'TOKOPEDIA' => 'Tokopedia (Manual)', 'SHOPEE' => 'Shopee (Manual)',
+            'TOKO' => 'Toko Fisik - Pasar Genteng', 'TOKOPEDIA' => 'Toko Online - Tokopedia', 'SHOPEE' => 'Toko Online - Shopee',
         ];
         $tipeTransaksi = [
-            'BIASA' => 'Biasa', 'PRE_ORDER' => 'Pre-Order',
+            'BIASA' => 'Biasa', 'PESAN_BARANG' => 'Pesan Barang ',
         ];
 
         return view('kasir.penjualan.create', compact(
@@ -297,16 +297,27 @@ class PenjualanController extends Controller
             // 5. Proses Detail Penjualan dan Stok
             foreach ($validated['items'] as $itemData) {
                 $produk = Produk::find($itemData['id_produk']);
-                if (!$produk) continue; // Seharusnya tidak terjadi karena validasi
+                if (!$produk) {
+                    DB::rollBack();
+                    return redirect()->back()->with('error', "Produk dengan ID {$itemData['id_produk']} tidak ditemukan.")->withInput();
+                }
 
                 $stokAllocations = json_decode($itemData['stok_allocations'], true);
                 $allSerialsForItem = []; // Kumpulkan semua serial untuk item ini
 
-                // Buat DetailPenjualan dulu untuk mendapatkan ID-nya
-                $detailPenjualan = $penjualan->detailPenjualan()->create([
+                // Hitung subtotal
+                $subtotal = $itemData['jumlah'] * $itemData['harga_jual'];
+
+                // Buat DetailPenjualan dengan semua field yang diperlukan
+                $detailPenjualan = DetailPenjualan::create([
+                    'id_penjualan' => $penjualan->id,
+                    'id_produk' => $itemData['id_produk'],
                     'jumlah' => $itemData['jumlah'],
                     'harga_jual' => $itemData['harga_jual'],
-                    // Field lain akan diisi setelah loop alokasi
+                    'nama_produk_snapshot' => $produk->nama,
+                    'kode_produk_snapshot' => $produk->kode_produk,
+                    'subtotal' => $subtotal,
+                    'status_bayar_konsinyasi' => 'BELUM_RELEVAN', // Default value
                 ]);
 
                 $isKonsinyasiItem = false; // Flag untuk item konsinyasi
