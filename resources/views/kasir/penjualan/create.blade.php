@@ -33,19 +33,10 @@
             color: #0d6efd; /* Bootstrap primary color */
         }
         .required-label::after { content: " *"; color: red; }
-        /* Tambahan style untuk memastikan dropdown navbar berfungsi */
-        .navbar {
-            z-index: 1030 !important;
-        }
-        .navbar .dropdown-menu {
-            z-index: 1031 !important;
-        }
-        /* Penyesuaian untuk card pembayaran */
-        .card.shadow-sm.sticky-top {
-            z-index: 1020 !important;
-            top: 4rem !important; /* Memberikan jarak dari navbar */
-        }
-        /* Penyesuaian agar tombol tambah pelanggan sejajar dengan select2 */
+        .navbar { z-index: 1030 !important; }
+        .navbar .dropdown-menu { z-index: 1031 !important; }
+        .card.shadow-sm.sticky-top { z-index: 1020 !important; top: 5rem !important; } /* Tambah jarak dari navbar */
+
         .input-group .select2-container--bootstrap-5 {
             flex: 1 1 auto;
             width: 1% !important;
@@ -63,9 +54,10 @@
         .input-group > .btn {
             border-top-left-radius: 0;
             border-bottom-left-radius: 0;
-            height: 100%;
+            /* height: 100%; -> dihapus agar tidak memaksa tinggi tombol */
+            min-height: calc(1.5em + .75rem + 2px); /* Sesuaikan dengan tinggi input */
+
         }
-        /* Untuk menghindari button turun ke bawah pada layar kecil */
         @media (max-width: 575.98px) {
             .input-group .select2-container--bootstrap-5,
             .input-group > .btn {
@@ -73,8 +65,23 @@
                 width: auto;
             }
         }
+        .btn-pilih-batch-serial.btn-outline-danger,
+        .btn-pilih-batch-serial.btn-outline-danger:hover,
+        .btn-pilih-batch-serial.btn-outline-danger:focus {
+            color: #dc3545;
+            border-color: #dc3545;
+            box-shadow: 0 0 0 0.25rem rgba(220, 53, 69, 0.25) !important; /* Shadow merah */
+        }
+        .btn-pilih-batch-serial.btn-outline-success,
+        .btn-pilih-batch-serial.btn-outline-success:hover,
+        .btn-pilih-batch-serial.btn-outline-success:focus {
+            color: #198754;
+            border-color: #198754;
+            box-shadow: 0 0 0 0.25rem rgba(25, 135, 84, 0.25) !important; /* Shadow hijau */
+        }
     </style>
 @endpush
+
 @section('content')
 <div class="container-fluid">
     <form action="{{ route('kasir.penjualan.store') }}" method="POST" id="form-penjualan">
@@ -91,7 +98,6 @@
                             <div class="col-md-4">
                                 <label class="form-label">No. Invoice:</label>
                                 <input type="text" class="form-control form-control-sm" value="(Otomatis)" readonly>
-                                {{-- <input type="text" class="form-control form-control-sm" value="{{ $nomorInvoiceSementara ?? '(Otomatis)' }}" readonly> --}}
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Tanggal Transaksi:</label>
@@ -110,8 +116,7 @@
                                 <label for="id_pelanggan" class="form-label">Pelanggan:</label>
                                 <div class="input-group">
                                     <select class="form-select select2-pelanggan" id="id_pelanggan" name="id_pelanggan" data-placeholder="Cari atau Pilih Pelanggan (Opsional)">
-                                        <option value=""></option> {{-- Option kosong untuk placeholder --}}
-                                        {{-- Opsi pelanggan akan dimuat via AJAX --}}
+                                        <option value=""></option>
                                     </select>
                                     <button class="btn btn-outline-success" type="button" id="btn-tambah-pelanggan-cepat" title="Tambah Pelanggan Baru">
                                         <i class="bi bi-person-plus-fill"></i>
@@ -134,6 +139,7 @@
                         </div>
                     </div>
                 </div>
+
                 <div class="card shadow-sm">
                     <div class="card-header bg-info text-white">
                         <h5 class="mb-0"><i class="bi bi-cart3 me-2"></i>Item Penjualan</h5>
@@ -153,35 +159,6 @@
                                 </thead>
                                 <tbody>
                                     {{-- Baris item akan ditambahkan oleh JavaScript --}}
-                                    {{-- Contoh satu baris (akan dihapus jika JS aktif) --}}
-                                    {{--
-                                    <tr class="item-penjualan-row" data-row-id="0">
-                                        <td>
-                                            <select class="form-select form-select-sm select2-produk-item" name="items[0][id_produk]" data-placeholder="Cari Produk..." required>
-                                                <option value=""></option>
-                                            </select>
-                                            <small class="text-muted d-block mt-1">Stok Tersedia: <span class="stok-produk-info">-</span></small>
-                                            <small class="text-muted d-block">Harga Standar: <span class="harga-standar-info">-</span></small>
-                                        </td>
-                                        <td>
-                                            <input type="number" name="items[0][jumlah]" class="form-control form-control-sm item-jumlah text-center" value="1" min="1" required>
-                                        </td>
-                                        <td>
-                                            <input type="text" name="items[0][harga_jual]" class="form-control form-control-sm item-harga-jual text-end" required data-inputmask="'alias': 'numeric', 'groupSeparator': '.', 'radixPoint': ',', 'digits': 0, 'autoGroup': true, 'prefix': 'Rp ', 'rightAlign': false, 'removeMaskOnSubmit': true">
-                                        </td>
-                                        <td class="text-end item-subtotal">Rp 0</td>
-                                        <td class="text-center">
-                                            <button type="button" class="btn btn-outline-secondary btn-sm btn-pilih-batch-serial" title="Pilih Batch/Serial">
-                                                <i class="bi bi-box-seam"></i> <span class="selected-batch-info">Pilih</span>
-                                            </button>
-                                            <input type="hidden" name="items[0][id_stok_barang]">
-                                            <input type="hidden" name="items[0][nomor_seri_terjual]">
-                                        </td>
-                                        <td class="text-center">
-                                            <button type="button" class="btn btn-danger btn-sm btn-hapus-item" title="Hapus Item"><i class="bi bi-trash"></i></button>
-                                        </td>
-                                    </tr>
-                                    --}}
                                 </tbody>
                             </table>
                         </div>
@@ -193,9 +170,10 @@
                     </div>
                 </div>
             </div>
+
             {{-- Kolom Kanan - Pembayaran & Aksi --}}
             <div class="col-lg-4 col-md-5">
-                <div class="card shadow-sm sticky-top" style="top: 1rem;">
+                <div class="card shadow-sm sticky-top">
                     <div class="card-header bg-success text-white">
                         <h5 class="mb-0"><i class="bi bi-credit-card me-2"></i>Pembayaran</h5>
                     </div>
@@ -205,6 +183,7 @@
                             <input type="text" class="form-control-plaintext total-display text-end" id="display_total_belanja" value="Rp 0" readonly>
                             <input type="hidden" name="total_harga" id="total_harga" value="0">
                         </div>
+
                         <div class="row g-3 mb-3">
                             <div class="col-md-12">
                                 <label for="tipe_transaksi" class="form-label required-label">Tipe Transaksi:</label>
@@ -216,23 +195,25 @@
                                 @error('tipe_transaksi') <div class="invalid-feedback">{{ $message }}</div> @enderror
                             </div>
                         </div>
-                        <div id="area-pesan-barang" style="display:none;"> {{-- Ganti ID dari area-preorder --}}
+
+                        <div id="area-pesan-barang" style="display:none;">
                             <div class="mb-3">
                                 <label for="uang_muka" class="form-label">Uang Muka (DP):</label>
                                 <input type="text" class="form-control input-rupiah @error('uang_muka') is-invalid @enderror" id="uang_muka" name="uang_muka" data-inputmask-alias="numeric">
                                 @error('uang_muka') <div class="invalid-feedback">{{ $message }}</div> @enderror
                             </div>
                             <div class="mb-3">
-                                <label for="estimasi_kirim_at" class="form-label">Estimasi Kirim:</label>
+                                <label for="estimasi_kirim_at" class="form-label">Estimasi Barang Tiba:</label>
                                 <input type="date" class="form-control @error('estimasi_kirim_at') is-invalid @enderror" id="estimasi_kirim_at" name="estimasi_kirim_at" min="{{ Carbon\Carbon::today()->toDateString() }}">
                                 @error('estimasi_kirim_at') <div class="invalid-feedback">{{ $message }}</div> @enderror
                             </div>
                              <div class="mb-3">
-                                <label class="form-label fw-bold">Sisa Pembayaran:</label>
+                                <label class="form-label fw-bold">Sisa Pembayaran Pesanan:</label>
                                 <input type="text" class="form-control-plaintext total-display text-end text-danger" id="display_sisa_pembayaran_po" value="Rp 0" readonly>
-                                <input type="hidden" name="sisa_pembayaran_po" id="sisa_pembayaran_po" value="0">
+                                <input type="hidden" name="sisa_pembayaran_po_hidden" id="sisa_pembayaran_po_hidden" value="0"> {{-- Hidden input untuk sisa PO --}}
                             </div>
                         </div>
+
                         <div class="mb-3">
                             <label for="metode_pembayaran" class="form-label required-label">Metode Pembayaran:</label>
                             <select class="form-select @error('metode_pembayaran') is-invalid @enderror" id="metode_pembayaran" name="metode_pembayaran" required>
@@ -242,24 +223,27 @@
                             </select>
                             @error('metode_pembayaran') <div class="invalid-feedback">{{ $message }}</div> @enderror
                         </div>
-                        <div class="mb-3" id="area-uang-bayar"> {{-- Muncul jika bukan PESAN_BARANG atau PESAN_BARANG tapi mau bayar lunas --}}
+
+                        <div class="mb-3" id="area-uang-bayar">
                             <label for="uang_bayar" class="form-label required-label">Uang Bayar:</label>
                             <input type="text" class="form-control input-rupiah @error('uang_bayar') is-invalid @enderror" id="uang_bayar" name="uang_bayar" data-inputmask-alias="numeric" required>
                              @error('uang_bayar') <div class="invalid-feedback">{{ $message }}</div> @enderror
                         </div>
+
                         <div class="mb-3">
                             <label class="form-label fw-bold">Kembalian:</label>
                             <input type="text" class="form-control-plaintext total-display text-end text-success" id="display_kembalian" value="Rp 0" readonly>
                         </div>
+
                         <div class="mb-3">
                             <label for="catatan_penjualan" class="form-label">Catatan Transaksi (Opsional):</label>
                             <textarea class="form-control" id="catatan_penjualan" name="catatan" rows="2"></textarea>
                         </div>
+
                         <div class="d-grid gap-2">
                             <button type="submit" class="btn btn-lg btn-primary" id="btn-simpan-penjualan">
                                 <i class="bi bi-save-fill me-2"></i> Simpan & Cetak Nota
                             </button>
-                            {{-- <button type="button" class="btn btn-outline-secondary">Tunda Transaksi</button> --}}
                         </div>
                     </div>
                 </div>
@@ -267,6 +251,7 @@
         </div>
     </form>
 </div>
+
 {{-- Modal Tambah Pelanggan Cepat --}}
 <div class="modal fade" id="modalTambahPelangganCepat" tabindex="-1" aria-labelledby="modalTambahPelangganCepatLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -297,7 +282,8 @@
         </div>
     </div>
 </div>
-{{-- Modal Pilih Batch/Serial (Struktur Awal) --}}
+
+{{-- Modal Pilih Batch/Serial --}}
 <div class="modal fade" id="modalPilihBatchSerial" tabindex="-1" aria-labelledby="modalPilihBatchSerialLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
@@ -314,11 +300,9 @@
                     <p class="mb-0" id="info-total-stok-modal">Total stok tersedia: Y unit.</p>
                 </div>
                 <div id="batch-allocation-details">
-                    {{-- Detail alokasi per batch akan ditampilkan di sini --}}
+                    {{-- Konten dinamis untuk pilihan batch --}}
                 </div>
-                <div id="serial-selection-area-multi" class="mt-3">
-                    {{-- Area pemilihan serial per batch akan ditambahkan di sini --}}
-                </div>
+                {{-- Area pemilihan serial tidak lagi di sini, tapi di dalam batch-allocation-details per batch --}}
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
@@ -330,21 +314,19 @@
     </div>
 </div>
 @endsection
+
 @push('scripts')
-    {{-- jQuery (jika belum ada di layout utama) --}}
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    {{-- Bootstrap JS (pastikan ini dimuat setelah jQuery) --}}
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    {{-- Select2 JS --}}
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-    {{-- Inputmask JS (untuk format Rupiah) --}}
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.inputmask/5.0.8/jquery.inputmask.min.js"></script>
-    {{-- SweetAlert2 --}}
     <script src="//cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
     <script>
+        // Fungsi helper global
         function formatRupiah(angka, prefix = 'Rp ') {
             if (isNaN(angka) || angka === null || angka === undefined) return prefix + '0';
-            let number_string = angka.toString().replace(/[^,\d]/g, ''),
+            let number_string = Math.round(angka).toString().replace(/[^,\d]/g, ''), // Bulatkan dulu
                 split = number_string.split(','),
                 sisa = split[0].length % 3,
                 rupiah = split[0].substr(0, sisa),
@@ -356,72 +338,63 @@
             rupiah = split[1] !== undefined ? rupiah + ',' + split[1] : rupiah;
             return prefix + rupiah;
         }
+
         function parseRupiah(rupiahString) {
-            if (!rupiahString) return 0;
+            if (typeof rupiahString !== 'string') return 0;
             return parseInt(rupiahString.replace(/[^0-9]/g, ''), 10) || 0;
         }
-        let itemRowCounter = 0; // Pindahkan ke scope global agar bisa diakses fungsi tambahItemProduk
+
+        let itemRowCounter = 0;
+        let currentProdukInfoForModal = {};
+        let currentQtyDibutuhkanTotalModal = 0;
+        let currentRowIdForBatchModal = null;
+
         $(document).ready(function() {
-            // Inisialisasi Inputmask untuk Rupiah
+            // Inisialisasi Inputmask untuk Rupiah (global untuk yang sudah ada di HTML)
             $('.input-rupiah').inputmask({
                 alias: 'numeric', groupSeparator: '.', radixPoint: ',', digits: 0, autoGroup: true,
                 prefix: 'Rp ', rightAlign: false, removeMaskOnSubmit: true,
                 oncleared: function () { $(this).val(''); }
             });
+
             // Inisialisasi Select2 untuk Pelanggan
-            $('#id_pelanggan.select2-pelanggan').select2({ // Targetkan dengan ID dan class
+            $('#id_pelanggan.select2-pelanggan').select2({
                 theme: "bootstrap-5",
                 width: '100%',
-                placeholder: $('#id_pelanggan.select2-pelanggan').data('placeholder'), // Ambil placeholder dari atribut data
+                placeholder: $('#id_pelanggan.select2-pelanggan').data('placeholder'),
                 allowClear: true,
                 ajax: {
                     url: "{{ route('kasir.ajax.pelanggan.search') }}",
-                    dataType: 'json',
-                    delay: 250,
-                    data: function(params) {
-                        return {
-                            q: params.term, // search term
-                            page: params.page || 1
-                        };
-                    },
+                    dataType: 'json', delay: 250,
+                    data: function(params) { return { q: params.term, page: params.page || 1 }; },
                     processResults: function(data, params) {
                         params.page = params.page || 1;
                         return {
-                            results: data.items, // data.items sudah dalam format {id: ..., text: ...}
-                            pagination: {
-                                more: (params.page * 15) < data.total_count // Asumsi limit 15
-                            }
+                            results: data.items,
+                            pagination: { more: (params.page * 15) < data.total_count }
                         };
                     },
                     cache: true
                 },
-                minimumInputLength: 1 // Mulai cari setelah 1 karakter diketik
+                minimumInputLength: 1
             }).on('select2:select', function (e) {
-                var data = e.params.data;
-                if (data.id !== 'PELANGGAN_BARU') {
-                    $('#pelanggan_baru_nama').val('');
-                    $('#pelanggan_baru_telepon').val('');
-                    $('#pelanggan_baru_alamat').val('');
-                }
+                $('#pelanggan_baru_nama, #pelanggan_baru_telepon, #pelanggan_baru_alamat').val('');
+                $('#info-pelanggan-baru').hide().text('');
             }).on('select2:clear', function (e) {
-                 $('#pelanggan_baru_nama').val('');
-                 $('#pelanggan_baru_telepon').val('');
-                 $('#pelanggan_baru_alamat').val('');
+                $('#pelanggan_baru_nama, #pelanggan_baru_telepon, #pelanggan_baru_alamat').val('');
+                $('#info-pelanggan-baru').hide().text('');
             });
+
             // Tombol Tambah Pelanggan Cepat
             $('#btn-tambah-pelanggan-cepat').on('click', function() {
                 $('#modal_pelanggan_nama').val('').removeClass('is-invalid');
-                $('#modal_pelanggan_telepon').val('');
-                $('#modal_pelanggan_alamat').val('');
+                $('#modal_pelanggan_telepon, #modal_pelanggan_alamat').val('');
                 $('#modal_nama_error').text('');
                 $('#modalTambahPelangganCepat').modal('show');
             });
-            // Tombol Simpan Pelanggan dari Modal
+
             $('#btn-simpan-pelanggan-cepat').on('click', function() {
                 const nama = $('#modal_pelanggan_nama').val().trim();
-                const telepon = $('#modal_pelanggan_telepon').val().trim();
-                const alamat = $('#modal_pelanggan_alamat').val().trim();
-                // Validasi nama di modal
                 if (!nama) {
                     $('#modal_pelanggan_nama').addClass('is-invalid');
                     $('#modal_nama_error').text('Nama pelanggan wajib diisi.');
@@ -429,107 +402,77 @@
                 }
                 $('#modal_pelanggan_nama').removeClass('is-invalid');
                 $('#modal_nama_error').text('');
-                // Isi hidden input untuk dikirim ke backend
                 $('#pelanggan_baru_nama').val(nama);
-                $('#pelanggan_baru_telepon').val(telepon);
-                $('#pelanggan_baru_alamat').val(alamat);
-                // Kosongkan pilihan di Select2 utama agar backend tahu ini pelanggan baru
+                $('#pelanggan_baru_telepon').val($('#modal_pelanggan_telepon').val().trim());
+                $('#pelanggan_baru_alamat').val($('#modal_pelanggan_alamat').val().trim());
                 $('#id_pelanggan.select2-pelanggan').val(null).trigger('change');
-                $('#info-pelanggan-baru').text('isi Data Pelanggan Baru: ' + nama).show();
-                // Tutup modal dan tampilkan notifikasi
+                $('#info-pelanggan-baru').text('Pelanggan Baru: ' + nama).show();
                 $('#modalTambahPelangganCepat').modal('hide');
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Pelanggan Baru Siap Digunakan', // Ubah judul sedikit
-                    text: 'Data pelanggan baru akan disimpan saat transaksi selesai.', // Ubah teks sedikit
-                    timer: 2500, // Sedikit lebih lama mungkin?
-                    showConfirmButton: false
-                });
+                Swal.fire({ icon: 'success', title: 'Pelanggan Baru Siap', text: 'Data akan disimpan saat transaksi selesai.', timer: 2000, showConfirmButton: false });
             });
-            // Menmbahkan event listener untuk clear hidden input jika user memilih pelanggan lama lagi
-            $('#id_pelanggan.select2-pelanggan').on('select2:select', function (e) {
-                // Jika memilih pelanggan yang sudah ada (bukan hasil dari 'Tambah Cepat')
-                 $('#pelanggan_baru_nama').val('');
-                 $('#pelanggan_baru_telepon').val('');
-                 $('#pelanggan_baru_alamat').val('');
-                 $('#info-pelanggan-baru').hide().text(''); // Sembunyikan indikator visual
-            }).on('select2:clear', function (e) {
-                 // Juga clear saat pilihan dihapus
-                 $('#pelanggan_baru_nama').val('');
-                 $('#pelanggan_baru_telepon').val('');
-                 $('#pelanggan_baru_alamat').val('');
-                 $('#info-pelanggan-baru').hide().text('');
-            });
-            // --- MODIFIKASI FUNGSI TAMBAH ITEM PRODUK ---
-            // Saat baris item baru ditambahkan, pastikan tombol "Pilih Batch/Serial"
-            // statusnya sesuai dengan tipe transaksi yang sedang aktif.
+
+            // Fungsi tambah item produk
             function tambahItemProduk(produkData = null) {
                 itemRowCounter++;
                 const rowId = itemRowCounter;
-                const currentTipeTransaksi = $('#tipe_transaksi').val(); // Ambil tipe transaksi saat ini
+                const currentTipeTransaksi = $('#tipe_transaksi').val();
                 const isPesanBarang = currentTipeTransaksi === 'PESAN_BARANG';
+
+                // --- PENTING: Penanganan input stok_allocations ---
+                let stokAllocationsInputHtml = '';
+                if (!isPesanBarang) {
+                    // Hanya tambahkan input ini jika bukan PESAN_BARANG
+                    // Value awal adalah string JSON array kosong
+                    stokAllocationsInputHtml = `<input type="hidden" class="stok-allocations-json" name="items[${rowId}][stok_allocations]" value='[]'>`;
+                }
+
                 const newRowHtml = `
                     <tr class="item-penjualan-row" data-row-id="${rowId}">
                         <td>
-                            <select class="form-select form-select-sm select2-produk-item" name="items[${rowId}][id_produk]" data-placeholder="Cari Produk..." required>
-                                <option value=""></option>
-                            </select>
+                            <select class="form-select form-select-sm select2-produk-item" name="items[${rowId}][id_produk]" data-placeholder="Cari Produk..." required></select>
                             <small class="text-muted d-block mt-1">Stok: <span class="stok-produk-info">-</span></small>
                             <small class="text-muted d-block">Harga Std: <span class="harga-standar-info">-</span></small>
                             <div class="invalid-feedback product-error-feedback"></div>
                         </td>
-                        <td>
-                            <input type="number" name="items[${rowId}][jumlah]" class="form-control form-control-sm item-jumlah text-center" value="1" min="1" required>
-                        </td>
-                        <td>
-                            <input type="text" name="items[${rowId}][harga_jual]" class="form-control form-control-sm item-harga-jual text-end input-rupiah-item" required>
-                        </td>
+                        <td><input type="number" name="items[${rowId}][jumlah]" class="form-control form-control-sm item-jumlah text-center" value="1" min="1" required></td>
+                        <td><input type="text" name="items[${rowId}][harga_jual]" class="form-control form-control-sm item-harga-jual text-end input-rupiah-item" required></td>
                         <td class="text-end item-subtotal fw-bold">Rp 0</td>
                         <td class="text-center">
                             <button type="button" class="btn btn-outline-secondary btn-sm btn-pilih-batch-serial" title="Pilih Batch/Serial" ${isPesanBarang ? 'disabled' : ''}>
-                                <i class="bi bi-box-seam"></i> <span class="selected-batch-info">${isPesanBarang ? 'Akan dialokasikan nanti' : 'Pilih'}</span>
+                                <i class="bi bi-box-seam"></i> <span class="selected-batch-info">${isPesanBarang ? 'Dialokasikan Nanti' : 'Pilih'}</span>
                             </button>
-                            ${!isPesanBarang ? `<input type="hidden" class="stok-allocations-json" name="items[${rowId}][stok_allocations]">` : ''}
+                            ${stokAllocationsInputHtml} {{-- Input stok_allocations ditambahkan di sini --}}
                             <small class="text-muted d-block mt-1 serial-info-display"></small>
                         </td>
-                        <td class="text-center">
-                            <button type="button" class="btn btn-danger btn-sm btn-hapus-item" title="Hapus Item"><i class="bi bi-trash"></i></button>
-                        </td>
+                        <td class="text-center"><button type="button" class="btn btn-danger btn-sm btn-hapus-item" title="Hapus Item"><i class="bi bi-trash"></i></button></td>
                     </tr>
                 `;
                 $('#tabel-item-penjualan tbody').append(newRowHtml);
                 const newRow = $(`#tabel-item-penjualan tbody tr[data-row-id="${rowId}"]`);
-                // Inisialisasi Select2 untuk produk di baris baru
+
+                newRow.find('.input-rupiah-item').inputmask({
+                    alias: 'numeric', groupSeparator: '.', radixPoint: ',', digits: 0, autoGroup: true,
+                    prefix: 'Rp ', rightAlign: false, removeMaskOnSubmit: true,
+                    oncleared: function () { $(this).val(''); }
+                });
+
                 newRow.find('.select2-produk-item').select2({
-                    theme: "bootstrap-5",
-                    width: '100%',
-                    placeholder: newRow.find('.select2-produk-item').data('placeholder'),
-                    // allowClear: true, // Bisa diaktifkan jika perlu
+                    theme: "bootstrap-5", width: '100%',
+                    placeholder: "Cari Produk...",
                     ajax: {
                         url: "{{ route('kasir.ajax.produk.search') }}",
-                        dataType: 'json',
-                        delay: 250,
-                        data: function(params) {
-                            return {
-                                q: params.term, // search term
-                                page: params.page || 1,
-                                for_sale: true // Menandakan pencarian untuk penjualan
-                            };
-                        },
+                        dataType: 'json', delay: 250,
+                        data: function(params) { return { q: params.term, page: params.page || 1, for_sale: true }; },
                         processResults: function(data, params) {
                             params.page = params.page || 1;
                             return {
-                                results: data.items.map(function(item) { // data.items sudah berisi field tambahan
-                                    return {
-                                        id: item.id,
-                                        text: item.text,
-                                        harga_jual_standar: item.harga_jual_standar,
-                                        memiliki_serial: item.memiliki_serial
-                                    };
-                                }),
-                                pagination: {
-                                    more: (params.page * 15) < data.total_count
-                                }
+                                results: data.items.map(item => ({
+                                    id: item.id, text: item.text,
+                                    harga_jual_standar: item.harga_jual_standar,
+                                    memiliki_serial: item.memiliki_serial,
+                                    durasi_garansi_standar_bulan: item.durasi_garansi_standar_bulan
+                                })),
+                                pagination: { more: (params.page * 15) < data.total_count }
                             };
                         },
                         cache: true
@@ -538,71 +481,52 @@
                 }).on('select2:select', function(e) {
                     const data = e.params.data;
                     const currentRow = $(this).closest('.item-penjualan-row');
-                    // --- FIX: pastikan harga dari DB decimal dibulatkan ke integer ---
                     let harga = parseFloat(data.harga_jual_standar) || 0;
-                    let hargaInt = Math.round(harga); // Atau Math.floor(harga) jika ingin selalu ke bawah
-                    currentRow.find('.harga-standar-info').text(formatRupiah(hargaInt));
-                    currentRow.find('.item-harga-jual').val(hargaInt).trigger('input');
-                    // --- END FIX ---
-                    // Hanya aktifkan tombol batch jika tipe transaksi BUKAN PESAN BARANG
-                    if ($('#tipe_transaksi').val() !== 'PESAN_BARANG') {
+                    currentRow.find('.harga-standar-info').text(formatRupiah(harga));
+                    currentRow.find('.item-harga-jual').val(Math.round(harga)).trigger('input'); // Harga jual di-bulatkan
+                    
+                    const currentTipe = $('#tipe_transaksi').val();
+                    if (currentTipe !== 'PESAN_BARANG') {
                          currentRow.find('.btn-pilih-batch-serial').prop('disabled', false);
-                         currentRow.find('.selected-batch-info').text('Pilih'); // Reset teks info
-                         currentRow.find('.btn-pilih-batch-serial').removeClass('btn-outline-success btn-outline-danger').addClass('btn-outline-secondary'); // Reset warna tombol
+                         currentRow.find('.selected-batch-info').text('Pilih');
                     } else {
                          currentRow.find('.btn-pilih-batch-serial').prop('disabled', true);
-                         currentRow.find('.selected-batch-info').text('Akan dialokasikan nanti').removeClass('text-success text-danger').addClass('text-muted');
-                         currentRow.find('.btn-pilih-batch-serial').removeClass('btn-outline-success btn-outline-danger').addClass('btn-outline-secondary'); // Reset warna tombol
+                         currentRow.find('.selected-batch-info').text('Dialokasikan Nanti');
                     }
-                    currentRow.find('.stok-produk-info').text('?'); // Akan diupdate setelah pilih batch
+                    currentRow.find('.btn-pilih-batch-serial').removeClass('btn-outline-success btn-outline-danger').addClass('btn-outline-secondary'); // Reset warna tombol
+
+                    currentRow.find('.stok-produk-info').text('?');
                     if(data.memiliki_serial){
-                        currentRow.find('.serial-info-display').text('Wajib Serial').addClass('text-danger');
+                        currentRow.find('.serial-info-display').text('Wajib Serial').addClass('text-danger fw-bold');
                     } else {
-                        currentRow.find('.serial-info-display').text('').removeClass('text-danger');
+                        currentRow.find('.serial-info-display').text('').removeClass('text-danger fw-bold');
                     }
-                    currentRow.find('.product-error-feedback').text('');
+                    currentRow.data('produk-info', data); // Simpan info produk di baris
                     hitungSubtotal(currentRow);
                     currentRow.find('.item-jumlah').focus().select();
                 }).on('select2:unselect', function (e) {
                     const currentRow = $(this).closest('.item-penjualan-row');
-                    currentRow.find('.harga-standar-info').text('-');
+                    currentRow.find('.harga-standar-info, .stok-produk-info, .serial-info-display').text('-');
                     currentRow.find('.item-harga-jual').val('Rp 0').trigger('input');
-                    currentRow.find('.stok-produk-info').text('-');
-                    currentRow.find('.btn-pilih-batch-serial').prop('disabled', true);
+                    currentRow.find('.btn-pilih-batch-serial').prop('disabled', true).removeClass('btn-outline-success btn-outline-danger').addClass('btn-outline-secondary');
                     currentRow.find('.selected-batch-info').text('Pilih');
-                    // Kosongkan alokasi stok saat produk di-unselect
+                    // Saat unselect, HAPUS input stok_allocations
                     currentRow.find('input.stok-allocations-json').remove();
-                    currentRow.find('input[name$="[id_stok_barang]"]').val(''); // Kosongkan input lama (jika masih pakai)
-                    currentRow.find('input[name$="[nomor_seri_terjual]"]').val(''); // Kosongkan input lama (jika masih pakai)
-                    currentRow.find('.serial-info-display').text('').removeClass('text-danger fw-bold');
-                    currentRow.find('.btn-pilih-batch-serial').removeClass('btn-outline-success btn-outline-danger').addClass('btn-outline-secondary'); // Reset warna tombol
+                    currentRow.removeData('produk-info');
                     hitungSubtotal(currentRow);
                 });
-                // Inisialisasi Inputmask untuk harga jual di baris baru
-                newRow.find('.input-rupiah-item').inputmask({
-                    alias: 'numeric', groupSeparator: '.', radixPoint: ',', digits: 0, autoGroup: true,
-                    prefix: 'Rp ', rightAlign: false, removeMaskOnSubmit: true,
-                    oncleared: function () { $(this).val(''); }
-                });
-                // Jika ada produkData awal (misal dari scan barcode nanti)
-                if(produkData){
+
+                if(produkData){ // Jika dari scan barcode
                     var option = new Option(produkData.text, produkData.id, true, true);
                     newRow.find('.select2-produk-item').append(option).trigger('change');
-                    // Trigger select event untuk mengisi data lain
-                    newRow.find('.select2-produk-item').trigger({
-                        type: 'select2:select',
-                        params: { data: produkData }
-                    });
+                    newRow.find('.select2-produk-item').trigger({ type: 'select2:select', params: { data: produkData } });
                 } else {
-                    // Fokus ke select produk baru jika tidak ada data awal
                     newRow.find('.select2-produk-item').select2('open');
                 }
             }
-            // Tombol Tambah Item
-            $('#btn-tambah-item').on('click', function() {
-                tambahItemProduk();
-            });
-            // Fungsi hitung subtotal per baris
+
+            $('#btn-tambah-item').on('click', function() { tambahItemProduk(); });
+
             function hitungSubtotal(row) {
                 const jumlah = parseInt(row.find('.item-jumlah').val()) || 0;
                 const hargaJual = parseRupiah(row.find('.item-harga-jual').val());
@@ -610,166 +534,139 @@
                 row.find('.item-subtotal').text(formatRupiah(subtotal));
                 hitungTotalBelanja();
             }
-            // Event listener untuk input jumlah dan harga jual
+
             $('#tabel-item-penjualan').on('input change', '.item-jumlah, .item-harga-jual', function() {
                 const row = $(this).closest('.item-penjualan-row');
                 hitungSubtotal(row);
             });
-            // Fungsi hitung total belanja keseluruhan
+
             function hitungTotalBelanja() {
                 let totalBelanja = 0;
-                $('.item-penjualan-row').each(function() {
-                    totalBelanja += parseRupiah($(this).find('.item-subtotal').text());
-                });
+                $('.item-penjualan-row').each(function() { totalBelanja += parseRupiah($(this).find('.item-subtotal').text()); });
                 $('#display_total_belanja').val(formatRupiah(totalBelanja));
                 $('#total_harga').val(totalBelanja);
                 hitungKembalian();
                 hitungSisaPembayaranPO();
             }
-            // Tombol Hapus Item
+
             $('#tabel-item-penjualan').on('click', '.btn-hapus-item', function() {
                 $(this).closest('.item-penjualan-row').remove();
                 hitungTotalBelanja();
+                if ($('#tabel-item-penjualan tbody tr').length === 0) { // Tambah item baru jika semua dihapus
+                    tambahItemProduk();
+                }
             });
-            // Logika untuk Tipe Transaksi
+
             $('#tipe_transaksi').on('change', function() {
                 const tipe = $(this).val();
-                if (tipe === 'PESAN_BARANG') {
-                    $('#area-pesan-barang').slideDown(); // Ganti ID
-                    $('#uang_muka').prop('required', true);
-                    // $('#estimasi_kirim_at').prop('required', true); // Dibuat opsional dulu, validasi di backend jika perlu
-                    $('#area-uang-bayar label[for="uang_bayar"]').text('Uang Bayar (Pelunasan):');
-                    $('#uang_bayar').prop('required', false); // Tidak wajib saat DP
+                const isPesanBarang = tipe === 'PESAN_BARANG';
 
-                    // === LOGIKA DISABLE PEMILIHAN STOK UNTUK PESAN BARANG ===
-                    $('.item-penjualan-row').each(function() {
-                        const row = $(this);
-                        row.find('.btn-pilih-batch-serial').prop('disabled', true);
-                        // Kosongkan pilihan batch/serial yang mungkin sudah ada
-                        row.find('input.stok-allocations-json').remove(); // Hapus hidden input alokasi
-                        row.find('input[name$="[id_stok_barang]"]').val(''); // Kosongkan input lama (jika masih pakai)
-                        row.find('input[name$="[nomor_seri_terjual]"]').val(''); // Kosongkan input lama (jika masih pakai)
-                        row.find('.selected-batch-info').text('Akan dialokasikan nanti').removeClass('text-success text-danger').addClass('text-muted');
-                        row.find('.serial-info-display').text('').removeClass('text-danger fw-bold');
-                         row.find('.btn-pilih-batch-serial').removeClass('btn-outline-success btn-outline-danger').addClass('btn-outline-secondary'); // Reset warna tombol
-                    });
-                    // ==============================================================
-                } else { // Tipe TRANSAKSI BIASA
-                    $('#area-pesan-barang').slideUp(); // Ganti ID
-                    $('#uang_muka').prop('required', false).val('');
-                    $('#estimasi_kirim_at').prop('required', false).val('');
-                    $('#area-uang-bayar label[for="uang_bayar"]').text('Uang Bayar:');
-                    $('#uang_bayar').prop('required', true);
+                $('#area-pesan-barang').toggle(isPesanBarang);
+                $('#uang_muka').prop('required', isPesanBarang);
+                // $('#estimasi_kirim_at').prop('required', isPesanBarang); // Opsional
 
-                    // === LOGIKA AKTIFKAN KEMBALI PEMILIHAN STOK UNTUK BIASA ===
-                     $('.item-penjualan-row').each(function() {
-                        const row = $(this);
-                        const produkSelect = row.find('.select2-produk-item');
-                        // Tambahkan kembali hidden input stok-allocations-json jika belum ada
-                        if (row.find('input.stok-allocations-json').length === 0) {
-                             let hiddenInputName = produkSelect.attr('name').replace('[id_produk]', '[stok_allocations]');
-                             row.find('.btn-pilih-batch-serial').parent().append(
-                                `<input type="hidden" class="stok-allocations-json" name="${hiddenInputName}" value='[]'>` // Default value array kosong
-                             );
+                $('#area-uang-bayar label[for="uang_bayar"]').text(isPesanBarang ? 'Uang Bayar (Pelunasan):' : 'Uang Bayar:');
+                $('#uang_bayar').prop('required', !isPesanBarang); // Wajib jika bukan Pesan Barang
+
+                $('.item-penjualan-row').each(function() {
+                    const row = $(this);
+                    const produkSelect = row.find('.select2-produk-item');
+                    row.find('.btn-pilih-batch-serial').prop('disabled', isPesanBarang || !produkSelect.val());
+                    row.find('.selected-batch-info').text(isPesanBarang ? 'Dialokasikan Nanti' : (produkSelect.val() ? 'Pilih' : '-'));
+                    row.find('.btn-pilih-batch-serial').removeClass('btn-outline-success btn-outline-danger').addClass('btn-outline-secondary');
+
+                    // Hapus atau tambahkan input stok_allocations
+                    const allocationsInput = row.find('input.stok-allocations-json');
+                    if (isPesanBarang) {
+                        allocationsInput.remove(); // Hapus jika PESAN_BARANG
+                    } else {
+                        if (allocationsInput.length === 0) { // Tambahkan jika BIASA dan belum ada
+                            let hiddenInputName = produkSelect.attr('name').replace('[id_produk]', '[stok_allocations]');
+                            if(hiddenInputName){ // pastikan nama ada
+                                row.find('.btn-pilih-batch-serial').parent().append(
+                                    `<input type="hidden" class="stok-allocations-json" name="${hiddenInputName}" value='[]'>`
+                                );
+                            }
                         }
-                        // Aktifkan kembali tombol jika produk sudah dipilih
-                        if (produkSelect.val()) {
-                             row.find('.btn-pilih-batch-serial').prop('disabled', false);
-                             row.find('.selected-batch-info').text('Pilih'); // Reset teks info
-                             row.find('.btn-pilih-batch-serial').removeClass('btn-outline-success btn-outline-danger').addClass('btn-outline-secondary'); // Reset warna tombol
-                        } else {
-                             row.find('.btn-pilih-batch-serial').prop('disabled', true); // Tetap disable jika produk belum dipilih
-                             row.find('.selected-batch-info').text('Pilih'); // Reset teks info
-                             row.find('.btn-pilih-batch-serial').removeClass('btn-outline-success btn-outline-danger').addClass('btn-outline-secondary'); // Reset warna tombol
-                        }
-                         // Info serial akan diupdate setelah batch dipilih
-                         row.find('.serial-info-display').text('').removeClass('text-danger fw-bold');
-                    });
-                    // ==============================================================
-                }
+                    }
+                    row.find('.serial-info-display').text(isPesanBarang ? '' : (row.data('produk-info')?.memiliki_serial ? 'Wajib Serial' : '')).toggleClass('text-danger fw-bold', !isPesanBarang && row.data('produk-info')?.memiliki_serial);
+                });
+
+                if (!isPesanBarang) $('#uang_muka, #estimasi_kirim_at').val('');
                 hitungSisaPembayaranPO();
                 hitungKembalian();
-            }).trigger('change');
-            $('#uang_muka').on('input', function() {
-                hitungSisaPembayaranPO();
-            });
+            }).trigger('change'); // Trigger saat halaman dimuat
+
+            $('#uang_muka').on('input', hitungSisaPembayaranPO);
+            $('#uang_bayar').on('input', hitungKembalian);
+
             function hitungSisaPembayaranPO() {
-                if ($('#tipe_transaksi').val() === 'PESAN_BARANG') { // Ganti ID
+                let sisa = 0;
+                if ($('#tipe_transaksi').val() === 'PESAN_BARANG') {
                     const totalBelanja = parseRupiah($('#display_total_belanja').val());
                     const uangMuka = parseRupiah($('#uang_muka').val());
-                    const sisa = totalBelanja - uangMuka;
-                    $('#display_sisa_pembayaran_po').val(formatRupiah(Math.max(0, sisa)));
-                    $('#sisa_pembayaran_po').val(Math.max(0, sisa));
-                } else {
-                    $('#display_sisa_pembayaran_po').val(formatRupiah(0));
-                    $('#sisa_pembayaran_po').val(0);
+                    sisa = Math.max(0, totalBelanja - uangMuka);
                 }
+                $('#display_sisa_pembayaran_po').val(formatRupiah(sisa));
+                $('#sisa_pembayaran_po_hidden').val(sisa);
             }
-            $('#uang_bayar').on('input', function() {
-                hitungKembalian();
-            });
+
             function hitungKembalian() {
                 const totalBelanja = parseRupiah($('#display_total_belanja').val());
                 const uangBayar = parseRupiah($('#uang_bayar').val());
                 let kembalian = 0;
-                if ($('#tipe_transaksi').val() === 'PESAN_BARANG') { // Ganti ID
+
+                if ($('#tipe_transaksi').val() === 'PESAN_BARANG') {
                     const uangMuka = parseRupiah($('#uang_muka').val());
                     const sisaPembayaranPO = Math.max(0, totalBelanja - uangMuka);
-                    if (uangBayar > 0 && sisaPembayaranPO > 0) { // Jika ada sisa PO dan ada uang bayar pelunasan
+                    // Jika ada uang bayar (untuk pelunasan) dan masih ada sisa PO
+                    if (uangBayar > 0 && sisaPembayaranPO > 0) {
                         kembalian = uangBayar - sisaPembayaranPO;
-                    } else if (uangBayar > 0 && sisaPembayaranPO === 0 && uangMuka === totalBelanja) { // Jika DP sudah lunas dan ada uang bayar (seharusnya tidak terjadi jika alur benar)
-                        kembalian = uangBayar; // Kembalikan semua uang bayar jika total sudah lunas via DP
-                    } else {
-                        kembalian = 0;
+                    } else if (uangBayar > 0 && sisaPembayaranPO === 0 && uangMuka === totalBelanja){
+                        // Jika DP sudah lunas penuh, dan ada uang bayar (seharusnya tidak terjadi jika uang muka pas)
+                        // Ini bisa jadi skenario dimana user bayar lebih dari sisa, kembalian dihitung dari uang bayar
+                        kembalian = uangBayar;
                     }
-                } else {
+                } else { // Transaksi BIASA
                     kembalian = uangBayar - totalBelanja;
                 }
                 $('#display_kembalian').val(formatRupiah(Math.max(0, kembalian)));
             }
-            // --- MODIFIKASI UNTUK PEMILIHAN BATCH ---
-            let currentRowIdForBatchModal = null; // Untuk menyimpan rowId item yang sedang diproses modalnya
-            let currentProdukInfoForModal = {}; // Untuk menyimpan info produk (memiliki_serial, dll)
-            let currentQtyDibutuhkanTotalModal = 0;
+
+            // --- Logika Modal Pilih Batch/Serial ---
             $('#tabel-item-penjualan').on('click', '.btn-pilih-batch-serial', function() {
                 const row = $(this).closest('.item-penjualan-row');
                 currentRowIdForBatchModal = row.data('row-id');
                 const produkSelect = row.find('.select2-produk-item');
                 const idProduk = produkSelect.val();
-                const produkDataArray = produkSelect.select2('data');
-                currentProdukInfoForModal = produkDataArray && produkDataArray.length > 0 ? produkDataArray[0] : {};
+                currentProdukInfoForModal = row.data('produk-info') || {}; // Ambil dari data baris
                 const namaProduk = currentProdukInfoForModal.text || 'Tidak Diketahui';
-                currentQtyDibutuhkanTotalModal = parseInt(row.find('.item-jumlah').val()) || 0; // Ambil jumlah dari input
+                currentQtyDibutuhkanTotalModal = parseInt(row.find('.item-jumlah').val()) || 0;
+
                 if (!idProduk || currentQtyDibutuhkanTotalModal <= 0) {
                     Swal.fire('Oops!', 'Pilih produk dan masukkan jumlah yang valid terlebih dahulu.', 'warning');
                     return;
                 }
-                // Reset modal
+
                 $('#modal_batch_item_row_id').val(currentRowIdForBatchModal);
                 $('#modal_batch_id_produk').val(idProduk);
                 $('#modal_batch_qty_dibutuhkan_total').val(currentQtyDibutuhkanTotalModal);
-                $('#nama-produk-modal-batch').text(namaProduk);
-                $('#nama-produk-modal-alert').text(namaProduk);
+                $('#nama-produk-modal-batch, #nama-produk-modal-alert').text(namaProduk);
                 $('#qty-dibutuhkan-info-modal').text(currentQtyDibutuhkanTotalModal);
-                $('#batch-allocation-details').html('<div class="text-center p-3"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Memuat batch tersedia...</p></div>');
-                $('#serial-selection-area-multi').empty().hide(); // Serial area utama disembunyikan dulu
+                $('#batch-allocation-details').html('<div class="text-center p-3"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Memuat batch...</p></div>');
                 $('#btn-simpan-pilihan-batch').prop('disabled', true);
+
                 $.ajax({
-                    url: '{{ route("kasir.ajax.stok.available") }}',
-                    type: 'GET',
-                    data: { id_produk: idProduk, qty_dibutuhkan: currentQtyDibutuhkanTotalModal }, // qty_dibutuhkan dikirim untuk info saja
+                    url: '{{ route("kasir.ajax.stok.available") }}', type: 'GET',
+                    data: { id_produk: idProduk, qty_dibutuhkan: currentQtyDibutuhkanTotalModal },
                     success: function(response) {
                         if (response.success) {
                             $('#info-total-stok-modal').text(`Total stok tersedia: ${response.total_stok_tersedia} unit.`);
-                            currentProdukInfoForModal.memiliki_serial = response.memiliki_serial;
-                            if (response.total_stok_tersedia < currentQtyDibutuhkanTotalModal && response.batches_data.length > 0) {
-                                 $('#batch-allocation-details').html(`<p class="text-danger text-center">Stok keseluruhan (${response.total_stok_tersedia} unit) tidak mencukupi kebutuhan (${currentQtyDibutuhkanTotalModal} unit).</p>`);
-                                 // Tetap tampilkan batch jika ada, agar user tahu sisa stoknya
-                                 displayAvailableBatchesForSelection(response.batches_data, currentQtyDibutuhkanTotalModal, response.memiliki_serial);
-                                return;
-                            }
+                            currentProdukInfoForModal.memiliki_serial = response.memiliki_serial; // Update info serial
+                            currentProdukInfoForModal.durasi_garansi_standar_bulan_produk = response.durasi_garansi_standar_bulan_produk;
+
                             if (!response.batches_data || response.batches_data.length === 0) {
-                                $('#batch-allocation-details').html('<p class="text-danger text-center">Tidak ada batch stok yang tersedia untuk produk ini.</p>');
+                                $('#batch-allocation-details').html('<p class="text-danger text-center">Tidak ada batch stok yang tersedia (atau semua sudah teralokasi/tidak di lokasi TOKO).</p>');
                                 return;
                             }
                             displayAvailableBatchesForSelection(response.batches_data, currentQtyDibutuhkanTotalModal, response.memiliki_serial);
@@ -777,145 +674,190 @@
                             $('#batch-allocation-details').html(`<p class="text-danger text-center">${response.message || 'Gagal memuat data batch.'}</p>`);
                         }
                     },
-                    error: function(jqXHR, textStatus, errorThrown) {
-                         $('#batch-allocation-details').html(`<p class="text-danger text-center">Error: Gagal mengambil data batch. (${errorThrown})</p>`);
+                    error: function(jqXHR) {
+                        $('#batch-allocation-details').html(`<p class="text-danger text-center">Error: Gagal mengambil data batch. ${jqXHR.responseJSON?.message || jqXHR.statusText}</p>`);
                     }
                 });
                 $('#modalPilihBatchSerial').modal('show');
             });
+
             function displayAvailableBatchesForSelection(batchesData, qtyDibutuhkanTotal, produkMemilikiSerial) {
-                let batchListHtml = `<h5 class="mb-2">Pilih Kuantitas dari Batch Tersedia:</h5>
+                let batchListHtml = `<h5 class="mb-2">Pilih Kuantitas dari Batch Tersedia (FIFO):</h5>
                                      <p class="mb-1">Total dibutuhkan: <strong id="modal-qty-dibutuhkan-display">${qtyDibutuhkanTotal}</strong> unit.</p>
                                      <p class="mb-3">Total dipilih: <strong id="modal-qty-terpilih-display" class="text-primary">0</strong> unit.</p>
                                      <div class="list-group mb-3">`;
-                if (batchesData.length === 0) {
-                     $('#batch-allocation-details').html('<p class="text-info text-center">Tidak ada batch yang bisa ditampilkan.</p>');
-                     return;
+                const totalAvailableStockFromBatches = batchesData.reduce((sum, batch) => sum + batch.jumlah_tersedia, 0);
+
+                if (totalAvailableStockFromBatches < qtyDibutuhkanTotal && batchesData.length > 0) {
+                    batchListHtml += `<div class="alert alert-warning mb-3">Stok keseluruhan (${totalAvailableStockFromBatches}) kurang dari kebutuhan (${qtyDibutuhkanTotal}).</div>`;
                 }
 
-                // Sort batches by diterima_at (FIFO)
-                batchesData.sort((a, b) => new Date(a.diterima_at) - new Date(b.diterima_at));
-
+                let remainingQtyToAllocate = qtyDibutuhkanTotal;
                 batchesData.forEach((batch, index) => {
-                    const isRecommended = index === 0; // Batch pertama (terlama) adalah rekomendasi
+                    let qtyAllocatedForThisBatch = 0;
+                    if (remainingQtyToAllocate > 0) {
+                        qtyAllocatedForThisBatch = Math.min(batch.jumlah_tersedia, remainingQtyToAllocate);
+                        remainingQtyToAllocate -= qtyAllocatedForThisBatch;
+                    }
+                    const showSerialContainerInitially = produkMemilikiSerial && qtyAllocatedForThisBatch > 0;
                     batchListHtml += `
-                        <div class="list-group-item batch-selection-item p-2 ${isRecommended ? 'border-start border-4 border-primary' : ''}" 
-                             data-id-stok-barang="${batch.id}" data-max-stok-batch="${batch.jumlah_tersedia}">
-                            <div class="row align-items-center">
-                                <div class="col-md-7">
-                                    <div class="d-flex align-items-center gap-2">
-                                        <strong>Batch ID: ${batch.id}</strong>
-                                        ${isRecommended ? '<span class="badge bg-primary">Rekomendasi by FIFO</span>' : ''}
-                                    </div>
+                        <div class="list-group-item batch-selection-item p-2 ${qtyAllocatedForThisBatch > 0 ? 'border-start border-4 border-primary' : ''}"
+                             data-id-stok-barang="${batch.id}" data-max-stok-batch="${batch.jumlah_tersedia}"
+                             data-tipe-garansi-batch="${batch.tipe_garansi}">
+                            <div class="row align-items-center g-2">
+                                <div class="col-md-6">
+                                    <strong class="d-block">Batch ID: ${batch.id} ${qtyAllocatedForThisBatch > 0 ? '<span class="badge bg-primary ms-1">FIFO Rec.</span>' : ''}</strong>
                                     <small class="d-block">Terima: ${batch.diterima_at_formatted} | Sisa: ${batch.jumlah_tersedia}</small>
-                                    <small class="d-block">Lok: ${batch.lokasi} | Garansi: ${batch.tipe_garansi}</small>
+                                    <small class="d-block">Lok: ${batch.lokasi} | Gar: ${batch.tipe_garansi_display} | Stok: ${batch.tipe_stok_display}</small>
                                 </div>
-                                <div class="col-md-5">
+                                <div class="col-md-6">
                                     <div class="input-group input-group-sm">
                                         <span class="input-group-text">Qty:</span>
-                                        <input type="number" class="form-control qty-from-batch-input text-center" value="0"
+                                        <input type="number" class="form-control qty-from-batch-input text-center" value="${qtyAllocatedForThisBatch}"
                                                min="0" max="${batch.jumlah_tersedia}" data-id-stok-barang="${batch.id}">
                                     </div>
+                                    <div class="invalid-feedback qty-error-feedback d-block text-end"></div>
                                 </div>
                             </div>
-                            ${produkMemilikiSerial ? `<div class="mt-2 serial-container-for-batch" id="serials-for-batch-${batch.id}" style="display:none;"></div>` : ''}
-                        </div>
-                    `;
+                            ${produkMemilikiSerial ? `<div class="mt-2 serial-container-for-batch" id="serials-for-batch-${batch.id}" style="display:${showSerialContainerInitially ? 'block':'none'};"></div>` : ''}
+                        </div>`;
                 });
                 batchListHtml += '</div>';
                 $('#batch-allocation-details').html(batchListHtml);
-                $('#serial-selection-area-multi').hide().empty();
-                attachQtyInputBatchEvents(produkMemilikiSerial);
+                attachQtyInputBatchEvents(produkMemilikiSerial, totalAvailableStockFromBatches);
                 updateTotalQtyTerpilihDisplay();
+
+                if (produkMemilikiSerial) {
+                    batchesData.forEach(batch => {
+                        const qtyInput = $(`.qty-from-batch-input[data-id-stok-barang="${batch.id}"]`);
+                        if (parseInt(qtyInput.val()) > 0) {
+                            loadNomorSeriUntukAlokasiBatch(batch.id, parseInt(qtyInput.val()));
+                        }
+                    });
+                }
             }
-            function attachQtyInputBatchEvents(produkMemilikiSerial) {
+
+            function attachQtyInputBatchEvents(produkMemilikiSerial, totalAvailableStockInAllBatches) {
                 $('.qty-from-batch-input').off('input change').on('input change', function() {
                     let val = parseInt($(this).val()) || 0;
-                    const max = parseInt($(this).attr('max'));
+                    const maxInThisBatch = parseInt($(this).attr('max'));
                     const idStokBarang = $(this).data('id-stok-barang');
                     const serialContainer = $(`#serials-for-batch-${idStokBarang}`);
+                    const errorFeedback = $(this).parent().siblings('.qty-error-feedback');
+
+                    $(this).removeClass('is-invalid'); errorFeedback.text('');
                     if (val < 0) val = 0;
-                    if (val > max) val = max;
-                    $(this).val(val); // Koreksi input jika di luar range
-                    updateTotalQtyTerpilihDisplay();
+                    if (val > maxInThisBatch) {
+                        val = maxInThisBatch;
+                        $(this).val(val).addClass('is-invalid');
+                        errorFeedback.text(`Maks. ${maxInThisBatch} unit.`);
+                    }
+
+                    // Validasi total qty yang dipilih tidak melebihi total stok tersedia dari semua batch
+                    let totalQtyCurrentlySelected = 0;
+                    $('.qty-from-batch-input').each(function() { totalQtyCurrentlySelected += parseInt($(this).val()) || 0; });
+                    
+                    // Perbaikan: Validasi agar total yang dipilih tidak melebihi total kebutuhan awal jika total stok mencukupi
+                    // atau tidak melebihi total stok tersedia jika stok kurang
+                    const maxAllowedToSelect = Math.min(currentQtyDibutuhkanTotalModal, totalAvailableStockInAllBatches);
+
+                    if (totalQtyCurrentlySelected > maxAllowedToSelect) {
+                        // Kurangi nilai input ini agar total kembali ke maxAllowedToSelect
+                        const diff = totalQtyCurrentlySelected - maxAllowedToSelect;
+                        val = Math.max(0, val - diff);
+                        $(this).val(val);
+                        $(this).addClass('is-invalid');
+                        errorFeedback.text(`Total pilihan melebihi kebutuhan/stok (${maxAllowedToSelect}).`);
+                        // Recalculate totalQtyCurrentlySelected
+                        totalQtyCurrentlySelected = 0;
+                        $('.qty-from-batch-input').each(function() { totalQtyCurrentlySelected += parseInt($(this).val()) || 0; });
+                    }
+                    
+                    updateTotalQtyTerpilihDisplay(totalQtyCurrentlySelected); // Kirim total terpilih
+
                     if (produkMemilikiSerial) {
                         if (val > 0) {
                             serialContainer.show();
-                            loadNomorSeriUntukAlokasiBatch(idStokBarang, val); // val adalah qty yg dibutuhkan dari batch ini
+                            loadNomorSeriUntukAlokasiBatch(idStokBarang, val);
                         } else {
                             serialContainer.hide().empty();
-                            // Panggil checkOverallSerialSelectionValidity untuk re-evaluasi tombol simpan jika qty jadi 0
                             checkOverallModalValidity();
                         }
                     } else {
-                        // Jika tidak berserial, langsung cek validitas keseluruhan
                         checkOverallModalValidity();
                     }
                 });
             }
-            function updateTotalQtyTerpilihDisplay() {
-                let totalQtyTerpilih = 0;
-                $('.qty-from-batch-input').each(function() {
-                    totalQtyTerpilih += parseInt($(this).val()) || 0;
-                });
-                $('#modal-qty-terpilih-display').text(totalQtyTerpilih);
-                // Ubah warna jika sudah pas atau lebih
-                if (totalQtyTerpilih === currentQtyDibutuhkanTotalModal) {
-                    $('#modal-qty-terpilih-display').removeClass('text-danger').addClass('text-success');
-                } else if (totalQtyTerpilih > currentQtyDibutuhkanTotalModal) {
-                    $('#modal-qty-terpilih-display').removeClass('text-success').addClass('text-danger');
+
+            function updateTotalQtyTerpilihDisplay(currentTotalSelected = null) {
+                let totalQtyTerpilih;
+                if (currentTotalSelected !== null) {
+                    totalQtyTerpilih = currentTotalSelected;
                 } else {
-                     $('#modal-qty-terpilih-display').removeClass('text-success text-danger');
+                    totalQtyTerpilih = 0;
+                    $('.qty-from-batch-input').each(function() { totalQtyTerpilih += parseInt($(this).val()) || 0; });
                 }
-                checkOverallModalValidity(); // Cek validitas setiap kali total berubah
+                
+                $('#modal-qty-terpilih-display').text(totalQtyTerpilih);
+                const qtyDibutuhkan = currentQtyDibutuhkanTotalModal;
+
+                if (totalQtyTerpilih === qtyDibutuhkan) {
+                    $('#modal-qty-terpilih-display').removeClass('text-danger text-primary').addClass('text-success');
+                } else if (totalQtyTerpilih > qtyDibutuhkan) {
+                    $('#modal-qty-terpilih-display').removeClass('text-success text-primary').addClass('text-danger');
+                } else {
+                    $('#modal-qty-terpilih-display').removeClass('text-success text-danger').addClass('text-primary');
+                }
+                checkOverallModalValidity();
             }
+
             function loadNomorSeriUntukAlokasiBatch(idStokBarang, qtyDibutuhkanDariBatchIni) {
-                // Fungsi ini sama seperti sebelumnya, tapi pastikan ia memanggil checkOverallModalValidity() di akhir success/error
                 const serialContainerTarget = $(`#serials-for-batch-${idStokBarang}`);
                 serialContainerTarget.html('<div class="text-center p-1"><small><div class="spinner-border spinner-border-sm text-primary" role="status"></div> Memuat serial...</small></div>');
                 $.ajax({
-                    url: '{{ route("kasir.ajax.stok.serials") }}',
-                    type: 'GET',
+                    url: '{{ route("kasir.ajax.stok.serials") }}', type: 'GET',
                     data: { id_stok_barang: idStokBarang },
                     success: function(response) {
-                        if (response.success && response.serials) {
+                        serialContainerTarget.empty(); // Bersihkan spinner
+                        if (response.success && response.serials && response.serials.length > 0) {
                             if (response.serials.length < qtyDibutuhkanDariBatchIni) {
-                                serialContainerTarget.html(`<p class="text-danger mb-1"><small>Stok serial di batch ${idStokBarang} (${response.serials.length}) kurang dari yg dibutuhkan (${qtyDibutuhkanDariBatchIni}).</small></p>`);
-                            } else {
-                                let serialHtml = `<p class="mb-1"><small>Pilih ${qtyDibutuhkanDariBatchIni} serial untuk Batch ID: ${idStokBarang}</small></p><div class="row row-cols-1 row-cols-sm-2 g-1">`; // Lebih sedikit kolom untuk ruang
-                                response.serials.forEach(function(serial, index) {
-                                    serialHtml += `
-                                        <div class="col">
-                                            <div class="form-check form-check-sm">
-                                                <input class="form-check-input nomor-seri-checkbox-multi" type="checkbox" value="${serial}"
-                                                       id="serial-batch-${idStokBarang}-${index}" data-id-stok-barang="${idStokBarang}" data-qty-needed-for-this-batch="${qtyDibutuhkanDariBatchIni}">
-                                                <label class="form-check-label" for="serial-batch-${idStokBarang}-${index}">
-                                                    <small>${serial}</small>
-                                                </label>
-                                            </div>
-                                        </div>
-                                    `;
-                                });
-                                serialHtml += '</div>';
-                                serialContainerTarget.html(serialHtml);
-                                attachMultiBatchSerialCheckboxEvents();
+                                serialContainerTarget.append(`<p class="text-danger mb-1"><small>Stok serial (${response.serials.length}) kurang dari kebutuhan (${qtyDibutuhkanDariBatchIni}) untuk Batch ID ${idStokBarang}.</small></p>`);
                             }
+                            let serialHtml = `<p class="mb-1"><small>Pilih ${qtyDibutuhkanDariBatchIni} serial untuk Batch ID: ${idStokBarang}</small></p>
+                                              <div class="row row-cols-1 row-cols-sm-2 g-1 serial-checkbox-group">`;
+                            response.serials.slice(0, Math.max(qtyDibutuhkanDariBatchIni, response.serials.length)).forEach(function(serial, index) { // Tampilkan semua serial yang ada, auto check N pertama
+                                const isChecked = index < qtyDibutuhkanDariBatchIni;
+                                serialHtml += `
+                                    <div class="col">
+                                        <div class="form-check form-check-sm">
+                                            <input class="form-check-input nomor-seri-checkbox-multi" type="checkbox" value="${serial}"
+                                                   id="serial-batch-${idStokBarang}-${index.toString().replace(/\s+/g, '-')}" data-id-stok-barang="${idStokBarang}" ${isChecked ? 'checked' : ''}>
+                                            <label class="form-check-label" for="serial-batch-${idStokBarang}-${index.toString().replace(/\s+/g, '-')}"><small>${serial}</small></label>
+                                        </div>
+                                    </div>`;
+                            });
+                            serialHtml += '</div>';
+                            serialContainerTarget.append(serialHtml);
+                            attachMultiBatchSerialCheckboxEvents(qtyDibutuhkanDariBatchIni);
                         } else {
-                            serialContainerTarget.html(`<p class="text-danger mb-1"><small>${response.message || `Gagal memuat serial untuk Batch ID: ${idStokBarang}.`}</small></p>`);
+                            serialContainerTarget.append(`<p class="text-danger mb-1"><small>${response.message || `Tidak ada serial tersedia untuk Batch ID: ${idStokBarang}.`}</small></p>`);
                         }
-                        checkOverallModalValidity(); // Panggil setelah update HTML
+                        checkOverallModalValidity();
                     },
                     error: function() {
                         serialContainerTarget.html(`<p class="text-danger mb-1"><small>Error AJAX memuat serial untuk Batch ID: ${idStokBarang}.</small></p>`);
-                        checkOverallModalValidity(); // Panggil setelah update HTML
+                        checkOverallModalValidity();
                     }
                 });
             }
-            function attachMultiBatchSerialCheckboxEvents() {
+
+            function attachMultiBatchSerialCheckboxEvents(qtyNeededForThisBatchFromInput) {
                 $('.nomor-seri-checkbox-multi').off('change').on('change', function() {
                     const idStokBarang = $(this).data('id-stok-barang');
-                    const qtyNeededForThisBatch = parseInt($(`.qty-from-batch-input[data-id-stok-barang="${idStokBarang}"]`).val()) || 0; // Ambil dari input qty batch
+                    // Ambil qtyNeeded dari input qty batch saat ini, bukan dari data-atribut checkbox
+                    const qtyNeededForThisBatch = parseInt($(`.qty-from-batch-input[data-id-stok-barang="${idStokBarang}"]`).val()) || 0;
                     const checkedInThisGroup = $(`.nomor-seri-checkbox-multi[data-id-stok-barang="${idStokBarang}"]:checked`).length;
+
                     if (checkedInThisGroup > qtyNeededForThisBatch) {
                         $(this).prop('checked', false);
                         Swal.fire('Perhatian', `Anda hanya boleh memilih ${qtyNeededForThisBatch} serial untuk batch ini.`, 'warning');
@@ -924,15 +866,18 @@
                 });
                 checkOverallModalValidity();
             }
+
             function checkOverallModalValidity() {
-                let totalQtyTerpilih = 0;
-                $('.qty-from-batch-input').each(function() {
-                    totalQtyTerpilih += parseInt($(this).val()) || 0;
-                });
-                if (totalQtyTerpilih !== currentQtyDibutuhkanTotalModal) {
+                let totalQtyTerpilihDariBatchInputs = 0;
+                $('.qty-from-batch-input').each(function() { totalQtyTerpilihDariBatchInputs += parseInt($(this).val()) || 0; });
+
+                const qtyDibutuhkanGlobal = currentQtyDibutuhkanTotalModal;
+
+                if (totalQtyTerpilihDariBatchInputs !== qtyDibutuhkanGlobal) {
                     $('#btn-simpan-pilihan-batch').prop('disabled', true);
                     return;
                 }
+
                 let allSerialsValid = true;
                 if (currentProdukInfoForModal.memiliki_serial) {
                     $('.qty-from-batch-input').each(function() {
@@ -940,12 +885,14 @@
                         if (qtyDariBatchIni > 0) {
                             const idStokBarang = $(this).data('id-stok-barang');
                             const serialsCheckedForThisBatch = $(`.nomor-seri-checkbox-multi[data-id-stok-barang="${idStokBarang}"]:checked`).length;
+                            const serialContainerForThisBatch = $(`#serials-for-batch-${idStokBarang}`);
+
                             if (serialsCheckedForThisBatch !== qtyDariBatchIni) {
                                 allSerialsValid = false;
-                                return false; // break .each loop
+                                return false;
                             }
-                            // Cek jika ada pesan error di container serial (misal stok serial kurang)
-                            if ($(`#serials-for-batch-${idStokBarang}`).find('p.text-danger').length > 0) {
+                            // Cek juga jika ada pesan error (misal serial kurang dari backend)
+                            if (serialContainerForThisBatch.find('p.text-danger').length > 0) {
                                 allSerialsValid = false;
                                 return false;
                             }
@@ -954,19 +901,21 @@
                 }
                 $('#btn-simpan-pilihan-batch').prop('disabled', !allSerialsValid);
             }
+
             $('#btn-simpan-pilihan-batch').on('click', function() {
-                // ... (logika untuk mengumpulkan data dari input .qty-from-batch-input dan serial yang dipilih) ...
-                // ... (mirip dengan #btn-simpan-pilihan-batch sebelumnya, tapi sumber datanya beda) ...
                 if (!currentRowIdForBatchModal) return;
                 const targetRow = $(`#tabel-item-penjualan tbody tr[data-row-id="${currentRowIdForBatchModal}"]`);
                 let stokAllocationsForSubmit = [];
                 let displayBatchInfo = [];
                 let displaySerialInfo = [];
                 let totalQtyFinalTerpilih = 0;
+                let formIsValid = true;
+
                 $('.batch-selection-item').each(function() {
                     const idStokBarang = $(this).data('id-stok-barang');
                     const qtyAllocated = parseInt($(this).find('.qty-from-batch-input').val()) || 0;
                     totalQtyFinalTerpilih += qtyAllocated;
+
                     if (qtyAllocated > 0) {
                         let serialsSelectedForThisBatch = [];
                         if (currentProdukInfoForModal.memiliki_serial) {
@@ -974,152 +923,228 @@
                                 serialsSelectedForThisBatch.push($(this).val());
                             });
                             if (serialsSelectedForThisBatch.length !== qtyAllocated) {
-                                Swal.fire('Validasi Gagal', `Jumlah serial (${serialsSelectedForThisBatch.length}) untuk Batch ID ${idStokBarang} tidak sesuai dengan kuantitas (${qtyAllocated}).`, 'error');
-                                stokAllocationsForSubmit = []; // Kosongkan agar tidak submit
-                                return false; // Hentikan .each
+                                Swal.fire('Validasi Gagal', `Jumlah serial (${serialsSelectedForThisBatch.length}) untuk Batch ID ${idStokBarang} tidak sesuai dengan kuantitas (${qtyAllocated}). Harap periksa kembali.`, 'error');
+                                formIsValid = false; return false;
                             }
                         }
                         stokAllocationsForSubmit.push({
-                            id_stok_barang: idStokBarang,
-                            qty_allocated: qtyAllocated,
+                            id_stok_barang: idStokBarang, qty_allocated: qtyAllocated,
                             serials_selected: serialsSelectedForThisBatch
                         });
-                        displayBatchInfo.push(`Batch ${idStokBarang} (${qtyAllocated})`);
-                        if (serialsSelectedForThisBatch.length > 0) {
-                            displaySerialInfo.push(...serialsSelectedForThisBatch);
-                        }
+                        displayBatchInfo.push(`B${idStokBarang}(${qtyAllocated})`);
+                        if (serialsSelectedForThisBatch.length > 0) displaySerialInfo.push(...serialsSelectedForThisBatch);
                     }
                 });
+
+                if (!formIsValid) return;
+
                 if (totalQtyFinalTerpilih !== currentQtyDibutuhkanTotalModal) {
-                    Swal.fire('Validasi Gagal', `Total kuantitas yang dipilih (${totalQtyFinalTerpilih}) tidak sesuai dengan yang dibutuhkan (${currentQtyDibutuhkanTotalModal}).`, 'error');
+                    Swal.fire('Validasi Gagal', `Total kuantitas terpilih (${totalQtyFinalTerpilih}) tidak sesuai kebutuhan (${currentQtyDibutuhkanTotalModal}).`, 'error');
                     return;
                 }
-                if (stokAllocationsForSubmit.length === 0 && totalQtyFinalTerpilih > 0) { // Jika ada qty tapi array kosong karena error serial
-                     Swal.fire('Validasi Gagal', `Terjadi kesalahan dalam pengumpulan data serial. Harap periksa kembali pilihan serial Anda.`, 'error');
-                     return;
+
+                if (stokAllocationsForSubmit.length === 0 && totalQtyFinalTerpilih > 0) {
+                     Swal.fire('Validasi Gagal', `Terjadi kesalahan pengumpulan data. Harap coba lagi.`, 'error'); return;
                 }
-                 if (stokAllocationsForSubmit.length === 0 && totalQtyFinalTerpilih === 0 && currentQtyDibutuhkanTotalModal > 0) {
-                    Swal.fire('Informasi', `Anda belum memilih kuantitas dari batch manapun.`, 'info');
-                    return; // Jangan tutup modal jika tidak ada yang dipilih
-                }
-                // Simpan sebagai JSON string
-                targetRow.find('input[name$="[id_stok_barang]"]').remove(); // Hapus input id_stok_barang yang lama
-                targetRow.find('input[name$="[nomor_seri_terjual]"]').remove(); // Hapus input nomor_seri_terjual yang lama
+
+                targetRow.find('input.stok-allocations-json').remove(); // Hapus yang lama jika ada
                 let hiddenInputName = targetRow.find('.select2-produk-item').attr('name').replace('[id_produk]', '[stok_allocations]');
-                targetRow.find('.btn-pilih-batch-serial').parent().find('input.stok-allocations-json').remove();
                 targetRow.find('.btn-pilih-batch-serial').parent().append(
                     `<input type="hidden" class="stok-allocations-json" name="${hiddenInputName}" value='${JSON.stringify(stokAllocationsForSubmit)}'>`
                 );
-                targetRow.find('.selected-batch-info').text(displayBatchInfo.join(', ')).removeClass('text-danger').addClass('text-success');
-                targetRow.find('.btn-pilih-batch-serial').removeClass('btn-outline-danger btn-outline-secondary').addClass('btn-outline-success');
-                if (displaySerialInfo.length > 0) {
-                    targetRow.find('.serial-info-display').text(`Seri: ${displaySerialInfo.join(', ')}`).removeClass('text-danger');
-                } else if (currentProdukInfoForModal.memiliki_serial && totalQtyFinalTerpilih > 0) { // Jika berserial dan ada qty, tapi tidak ada serial terpilih
-                    targetRow.find('.serial-info-display').text('Pilih Serial!').addClass('text-danger');
+
+                targetRow.find('.selected-batch-info').text(displayBatchInfo.length > 0 ? displayBatchInfo.join(', ') : 'Pilih').toggleClass('text-success', displayBatchInfo.length > 0).removeClass('text-danger');
+                targetRow.find('.btn-pilih-batch-serial').removeClass('btn-outline-danger btn-outline-secondary').addClass(displayBatchInfo.length > 0 ? 'btn-outline-success' : 'btn-outline-secondary');
+
+                if (currentProdukInfoForModal.memiliki_serial) {
+                     targetRow.find('.serial-info-display').text(displaySerialInfo.length > 0 ? `Seri: ${displaySerialInfo.join(', ')}` : 'Pilih Serial!').toggleClass('text-danger fw-bold', displaySerialInfo.length === 0 && totalQtyFinalTerpilih > 0);
                 } else {
                      targetRow.find('.serial-info-display').text('-');
                 }
-                // Update info stok tersedia di baris item (opsional)
-                // targetRow.find('.stok-produk-info').text('Terpilih');
                 $('#modalPilihBatchSerial').modal('hide');
             });
-            // --- MODIFIKASI VALIDASI FORM SUBMIT ---
+
+            // Validasi Form Submit Utama
             $('#form-penjualan').on('submit', function(e) {
                 let isValid = true;
                 let errorMessages = [];
                 let firstInvalidElement = null;
-                // ... (validasi minimal 1 item, validasi header transaksi) ...
+
+                // 1. Validasi Header Transaksi (Pelanggan jika baru, Kanal, Tipe, Metode Bayar)
+                if ($('#pelanggan_baru_nama').val() && !$('#id_pelanggan').val()){
+                    // Jika pelanggan baru diisi, nama wajib
+                } else if (!$('#id_pelanggan').val() && !$('#pelanggan_baru_nama').val()){
+                    // Bisa jadi pelanggan umum tanpa nama, ini opsional, jadi tidak perlu validasi khusus di sini
+                    // kecuali ada kebijakan harus pilih/isi pelanggan.
+                }
+                if (!$('#kanal_transaksi').val()) { errorMessages.push("Kanal transaksi wajib dipilih."); isValid = false; if(!firstInvalidElement) firstInvalidElement = $('#kanal_transaksi');}
                 const tipeTransaksi = $('#tipe_transaksi').val();
+                if (!tipeTransaksi) { errorMessages.push("Tipe transaksi wajib dipilih."); isValid = false; if(!firstInvalidElement) firstInvalidElement = $('#tipe_transaksi');}
+                if (!$('#metode_pembayaran').val()) { errorMessages.push("Metode pembayaran wajib dipilih."); isValid = false; if(!firstInvalidElement) firstInvalidElement = $('#metode_pembayaran');}
+
+                if (tipeTransaksi === 'PESAN_BARANG') {
+                    if (parseRupiah($('#uang_muka').val()) <= 0) { // DP harus lebih dari 0 untuk Pesan Barang
+                        errorMessages.push("Uang muka (DP) wajib diisi dan lebih dari 0 untuk Pesan Barang.");
+                        isValid = false; if(!firstInvalidElement) firstInvalidElement = $('#uang_muka');
+                    }
+                } else { // Transaksi BIASA
+                    if (parseRupiah($('#uang_bayar').val()) <= 0 && parseRupiah($('#total_harga').val()) > 0) { // Uang bayar harus ada jika ada total belanja
+                        errorMessages.push("Uang bayar wajib diisi untuk transaksi biasa.");
+                        isValid = false; if(!firstInvalidElement) firstInvalidElement = $('#uang_bayar');
+                    } else if (parseRupiah($('#uang_bayar').val()) < parseRupiah($('#total_harga').val())) {
+                         errorMessages.push("Uang bayar kurang dari total belanja.");
+                         isValid = false; if(!firstInvalidElement) firstInvalidElement = $('#uang_bayar');
+                    }
+                }
+
+                // 2. Validasi Item Minimal
+                if ($('.item-penjualan-row').length === 0) {
+                    errorMessages.push("Minimal harus ada satu item produk dalam transaksi.");
+                    isValid = false; if(!firstInvalidElement) firstInvalidElement = $('#btn-tambah-item');
+                }
+
+                // 3. Validasi Setiap Item
                 $('.item-penjualan-row').each(function(index) {
                     const row = $(this);
                     const itemNum = index + 1;
                     const produkSelect = row.find('.select2-produk-item');
                     const jumlahInput = row.find('.item-jumlah');
                     const hargaJualInput = row.find('.item-harga-jual');
-                    const produkDataArray = produkSelect.select2('data');
-                    const produkData = produkDataArray && produkDataArray.length > 0 ? produkDataArray[0] : null;
-                    // ... (validasi produk dipilih, jumlah > 0, harga jual valid) ...
-                    // === LOGIKA VALIDASI ALOKASI STOK BERDASARKAN TIPE TRANSAKSI ===
+                    const produkInfo = row.data('produk-info'); // Ambil info produk dari data baris
+
+                    if (!produkSelect.val()) {
+                        errorMessages.push(`Produk wajib dipilih untuk item ke-${itemNum}.`);
+                        isValid = false; if(!firstInvalidElement) firstInvalidElement = produkSelect;
+                    }
+                    if ((parseInt(jumlahInput.val()) || 0) <= 0) {
+                        errorMessages.push(`Jumlah untuk item ke-${itemNum} harus lebih dari 0.`);
+                        isValid = false; if(!firstInvalidElement) firstInvalidElement = jumlahInput;
+                    }
+                    if (parseRupiah(hargaJualInput.val()) < 0) { // Harga boleh 0 jika memang gratis
+                        errorMessages.push(`Harga jual untuk item ke-${itemNum} tidak boleh negatif.`);
+                        isValid = false; if(!firstInvalidElement) firstInvalidElement = hargaJualInput;
+                    }
+
                     const stokAllocationsInput = row.find('input.stok-allocations-json');
                     if (tipeTransaksi === 'BIASA') {
-                        // Untuk transaksi BIASA, alokasi stok wajib ada dan valid
-                        if (!stokAllocationsInput.length || !stokAllocationsInput.val()) {
-                            errorMessages.push(`Alokasi batch/stok wajib dipilih untuk item ke-${itemNum} (${produkData ? produkData.text : 'produk'}).`);
+                        if (!stokAllocationsInput.length || !stokAllocationsInput.val() || stokAllocationsInput.val() === '[]') {
+                            errorMessages.push(`Alokasi batch/stok wajib dipilih untuk item ke-${itemNum}.`);
                             isValid = false;
-                            row.find('.btn-pilih-batch-serial').addClass('btn-outline-danger').removeClass('btn-outline-success btn-outline-secondary');
-                            if (!firstInvalidElement) firstInvalidElement = row.find('.btn-pilih-batch-serial');
+                            row.find('.btn-pilih-batch-serial').removeClass('btn-outline-success btn-outline-secondary').addClass('btn-outline-danger');
+                            if(!firstInvalidElement) firstInvalidElement = row.find('.btn-pilih-batch-serial');
                         } else {
                             try {
                                 const allocations = JSON.parse(stokAllocationsInput.val());
                                 let totalAllocatedQty = 0;
-                                let serialsValid = true;
-                                allocations.forEach(alloc => {
-                                    totalAllocatedQty += alloc.qty_allocated;
-                                    if (produkData && produkData.memiliki_serial) {
-                                        if (alloc.serials_selected.length !== alloc.qty_allocated) {
-                                            serialsValid = false;
+                                let serialsValidForItem = true;
+                                if (!Array.isArray(allocations) || allocations.length === 0) {
+                                    errorMessages.push(`Alokasi batch tidak boleh kosong untuk item ke-${itemNum}.`);
+                                    isValid = false; serialsValidForItem = false;
+                                } else {
+                                    allocations.forEach(alloc => {
+                                        totalAllocatedQty += alloc.qty_allocated;
+                                        if (produkInfo && produkInfo.memiliki_serial) {
+                                            if (!alloc.serials_selected || alloc.serials_selected.length !== alloc.qty_allocated) {
+                                                serialsValidForItem = false;
+                                            }
                                         }
-                                        // TODO: Tambahkan validasi keunikan serial di frontend jika perlu
-                                    }
-                                });
-                                const qtyDiForm = parseInt(row.find('.item-jumlah').val()) || 0;
+                                    });
+                                }
+
+                                const qtyDiForm = parseInt(jumlahInput.val()) || 0;
                                 if (totalAllocatedQty !== qtyDiForm) {
-                                    errorMessages.push(`Total kuantitas dari alokasi batch (${totalAllocatedQty}) tidak cocok dengan jumlah item (${qtyDiForm}) untuk item ke-${itemNum}.`);
+                                    errorMessages.push(`Total alokasi batch (${totalAllocatedQty}) tidak cocok dengan jumlah (${qtyDiForm}) untuk item ke-${itemNum}.`);
                                     isValid = false;
-                                    row.find('.btn-pilih-batch-serial').addClass('btn-outline-danger');
-                                    if (!firstInvalidElement) firstInvalidElement = row.find('.btn-pilih-batch-serial');
                                 }
-                                if (!serialsValid && produkData && produkData.memiliki_serial) {
-                                    errorMessages.push(`Jumlah nomor seri tidak sesuai dengan kuantitas yang dialokasikan per batch untuk item ke-${itemNum}.`);
+                                if (!serialsValidForItem && produkInfo && produkInfo.memiliki_serial) {
+                                    errorMessages.push(`Pemilihan nomor seri tidak sesuai atau tidak lengkap untuk item ke-${itemNum}.`);
                                     isValid = false;
-                                    row.find('.serial-info-display').addClass('text-danger fw-bold').text('Periksa Serial!');
-                                    if (!firstInvalidElement) firstInvalidElement = row.find('.btn-pilih-batch-serial');
                                 }
-                                // Jika validasi alokasi dan serial lolos, pastikan tombol batch berwarna hijau
-                                if (totalAllocatedQty === qtyDiForm && (!produkData || !produkData.memiliki_serial || serialsValid)) {
+                                // Update visual tombol batch
+                                if (isValid) {
                                      row.find('.btn-pilih-batch-serial').removeClass('btn-outline-danger btn-outline-secondary').addClass('btn-outline-success');
                                 } else {
                                      row.find('.btn-pilih-batch-serial').removeClass('btn-outline-success btn-outline-secondary').addClass('btn-outline-danger');
+                                     if(!firstInvalidElement) firstInvalidElement = row.find('.btn-pilih-batch-serial');
                                 }
+
                             } catch (jsonError) {
                                 errorMessages.push(`Data alokasi stok tidak valid untuk item ke-${itemNum}.`);
                                 isValid = false;
-                                row.find('.btn-pilih-batch-serial').addClass('is-invalid'); // Tambahkan class is-invalid juga
-                                if (!firstInvalidElement) firstInvalidElement = row.find('.btn-pilih-batch-serial');
+                                if(!firstInvalidElement) firstInvalidElement = row.find('.btn-pilih-batch-serial');
                             }
                         }
-                    } else if (tipeTransaksi === 'PESAN_BARANG') {
-                        // Untuk transaksi PESAN BARANG, alokasi stok TIDAK BOLEH ada
-                        if (stokAllocationsInput.length > 0 && stokAllocationsInput.val() && stokAllocationsInput.val() !== '[]') { // Cek jika ada input dan isinya bukan array kosong
-                             errorMessages.push(`Alokasi batch/stok tidak diperlukan untuk item 'Pesan Barang' ke-${itemNum}. Harap hapus item dan tambahkan kembali.`);
-                             isValid = false;
-                             // Tidak ada tombol batch untuk dinonaktifkan, mungkin beri highlight pada baris?
-                             if (!firstInvalidElement) firstInvalidElement = row; // Arahkan ke baris item
+                    } else { // PESAN_BARANG
+                         // Pastikan tidak ada alokasi stok yang terkirim
+                        if (stokAllocationsInput.length > 0) { // Jika inputnya masih ada (seharusnya sudah diremove)
+                            errorMessages.push(`Item 'Pesan Barang' ke-${itemNum} tidak memerlukan alokasi batch/stok saat ini.`);
+                            isValid = false;
+                            // Tandai error di baris atau produk
+                            if(!firstInvalidElement) firstInvalidElement = produkSelect;
                         }
-                         // Pastikan tombol batch disabled dan infonya benar
-                         row.find('.btn-pilih-batch-serial').prop('disabled', true).removeClass('btn-outline-success btn-outline-danger').addClass('btn-outline-secondary');
-                         row.find('.selected-batch-info').text('Akan dialokasikan nanti').removeClass('text-success text-danger').addClass('text-muted');
-                         row.find('.serial-info-display').text('').removeClass('text-danger fw-bold');
                     }
-                    // ==================================================================
                 });
-                // Tambah item pertama saat halaman dimuat
-                if ($('#tabel-item-penjualan tbody tr').length === 0) {
-                     tambahItemProduk();
+
+                if (!isValid) {
+                    e.preventDefault(); // Mencegah form submit
+                    let errorHtml = '<ul>';
+                    errorMessages.forEach(function(msg) { errorHtml += `<li>${msg}</li>`; });
+                    errorHtml += '</ul>';
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Validasi Gagal!',
+                        html: errorHtml,
+                        confirmButtonText: 'OK, Saya Mengerti'
+                    }).then(() => {
+                        if (firstInvalidElement) {
+                            $('html, body').animate({
+                                scrollTop: $(firstInvalidElement).offset().top - 100 // Scroll ke elemen error pertama
+                            }, 500, function() {
+                                $(firstInvalidElement).focus();
+                            });
+                        }
+                    });
+                } else {
+                    // Jika valid, disable tombol submit untuk mencegah double click
+                    $('#btn-simpan-penjualan').prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Memproses...');
                 }
-                // Tambahkan ini di awal script untuk memastikan dropdown navbar berfungsi
-                $('.navbar .dropdown-toggle').on('click', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    $(this).next('.dropdown-menu').toggleClass('show');
-                });
-                // Tutup dropdown saat klik di luar
-                $(document).on('click', function(e) {
-                    if (!$(e.target).closest('.navbar .dropdown').length) {
-                        $('.navbar .dropdown-menu').removeClass('show');
-                    }
-                });
             });
+
+            // Tambah item pertama saat halaman dimuat
+            if ($('#tabel-item-penjualan tbody tr').length === 0) {
+                 tambahItemProduk();
+            }
+
+            // Fix untuk dropdown navbar agar tidak tertutup modal
+            $('.navbar .dropdown-toggle').on('click', function (e) {
+                var $el = $(this);
+                var $parent = $(this).offsetParent(".dropdown-menu");
+                $(this).next().toggleClass('show');
+                // return false; // Mencegah event lain
+            });
+            $(document).on('click', function(e){
+                if (!$('.navbar .dropdown').is(e.target) && $('.navbar .dropdown').has(e.target).length === 0 && $('.show').has(e.target).length === 0 ) {
+                    $('.navbar .dropdown-menu').removeClass('show');
+                }
+            });
+
+            // --- Tambahkan auto-open nota jika ada session last_penjualan_id_for_nota ---
+            @if(session('last_penjualan_id_for_nota'))
+                var penjualanId = "{{ session('last_penjualan_id_for_nota') }}";
+                var urlNota = "{{ route('kasir.penjualan.nota', ['id' => ':id']) }}".replace(':id', penjualanId);
+                // Buka di tab baru
+                var notaWindow = window.open(urlNota, '_blank');
+                if (notaWindow) {
+                    notaWindow.focus(); // Fokus ke tab baru
+                } else {
+                    // Jika pop-up blocker aktif
+                    Swal.fire(
+                        'Nota Siap!',
+                        'Nota untuk transaksi {{ session("last_penjualan_nomor") }} siap. Klik <a href="'+urlNota+'" target="_blank" class="btn btn-sm btn-info">di sini</a> untuk membuka.',
+                        'info'
+                    );
+                }
+            @endif
         });
     </script>
 @endpush

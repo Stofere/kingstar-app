@@ -1,4 +1,19 @@
+// resources/js/bootstrap.js
+
 window._ = require("lodash");
+
+/**
+ * We'll load jQuery and the Bootstrap jQuery plugin which provides support
+ * for JavaScript based Bootstrap features such as modals and tabs. This
+ * code may be modified to fit the specific needs of your application.
+ */
+
+try {
+    window.Popper = require("@popperjs/core").default; // Pastikan Popper dimuat sebelum Bootstrap
+    window.$ = window.jQuery = require("jquery"); // MEMBUAT JQUERY GLOBAL DI SINI
+} catch (e) {
+    console.error("Error loading jQuery or Bootstrap JS:", e);
+}
 
 /**
  * We'll load the axios HTTP library which allows us to easily issue requests
@@ -7,7 +22,6 @@ window._ = require("lodash");
  */
 
 window.axios = require("axios");
-
 window.axios.defaults.headers.common["X-Requested-With"] = "XMLHttpRequest";
 
 /**
@@ -17,25 +31,5 @@ window.axios.defaults.headers.common["X-Requested-With"] = "XMLHttpRequest";
  */
 
 // import Echo from 'laravel-echo';
-
 // window.Pusher = require('pusher-js');
-
-// window.Echo = new Echo({
-//     broadcaster: 'pusher',
-//     key: process.env.MIX_PUSHER_APP_KEY,
-//     cluster: process.env.MIX_PUSHER_APP_CLUSTER,
-//     forceTLS: true
-// });
-
-// resources/js/bootstrap.js
-// File ini biasanya sudah di-generate oleh laravel/ui
-// Pastikan _ (lodash) dan axios diimpor jika Anda membutuhkannya global
-// window._ = require('lodash');
-// window.axios = require('axios');
-// window.axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
-
-// Import Popper dan Bootstrap JS
-import * as Popper from "@popperjs/core";
-window.Popper = Popper; // Opsional: expose global jika perlu
-
-import "bootstrap"; // Ini akan mengimpor Bootstrap's JavaScript
+// window.Echo = new Echo({ ... });

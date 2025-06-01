@@ -22,7 +22,7 @@ class ProdukFactory extends Factory
             'kode_produk' => strtoupper(Str::random(3)) . $this->faker->unique()->numerify('#####'),
             'nama' => $namaProduk . ' ' . $this->faker->words(2, true),
             'deskripsi' => $this->faker->optional()->sentence(10),
-            'harga_jual_standart' => $this->faker->numberBetween(100000, 15000000),
+            'harga_jual_standart' => $this->faker->randomElement([100000, 1500000, 2500000, 5000000]),
             'satuan' => 'PCS',
             'memiliki_serial' => $memilikiSerial,
             'durasi_garansi_standar_bulan' => $memilikiSerial ? $this->faker->randomElement([6, 12, 24]) : $this->faker->randomElement([0, 1, null]), // Garansi lebih mungkin jika ada serial

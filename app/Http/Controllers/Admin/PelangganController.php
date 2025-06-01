@@ -8,7 +8,7 @@ use App\Http\Requests\StorePelangganRequest; // Import Form Request
 use App\Http\Requests\UpdatePelangganRequest; // Import Form Request
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB; // Untuk transaksi database (opsional untuk CRUD sederhana)
-use Yajra\DataTables\Facades\DataTables; // Import DataTables
+use Yajra\DataTables\Facades\DataTables; 
 
 class PelangganController extends Controller
 {

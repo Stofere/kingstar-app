@@ -84,5 +84,4 @@
 @endsection
 
 @push('scripts')
-    {{-- Jika ada script spesifik untuk form edit, tambahkan di sini --}}
 @endpush

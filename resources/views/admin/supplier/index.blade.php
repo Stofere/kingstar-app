@@ -65,7 +65,7 @@
                     { data: 'action', name: 'action', orderable: false, searchable: false, width: '10%', className: 'action-buttons' }
                 ],
                 language: {
-                    url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/id.json',
+                    url: '{{ asset('js/i18n/id.json') }}',
                     processing: '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>'
                 },
                 order: [[1, 'asc']] // Default order by nama supplier

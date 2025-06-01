@@ -3,9 +3,6 @@
 @section('title', 'Kelola Pengguna')
 
 @push('styles')
-    {{-- DataTables CSS --}}
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css">
-    <link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.bootstrap5.min.css">
 @endpush
 
 @section('content')
@@ -61,13 +58,12 @@
 @endsection
 
 @push('scripts')
-    {{-- Inisialisasi DataTables --}}
     <script>
         $(document).ready(function() {
             $('#pengguna-table').DataTable({
                 responsive: true,
                 language: { // Opsi untuk bahasa Indonesia DataTables
-                    url: 'https://cdn.datatables.net/plug-ins/1.13.7/i18n/id.json',
+                    url: '{{ asset('js/i18n/id.json') }}',
                 },
             });
 
@@ -92,6 +88,4 @@
             });
         });
     </script>
-     {{-- Pastikan SweetAlert2 sudah di-load, bisa via CDN di app.blade.php atau npm --}}
-     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 @endpush

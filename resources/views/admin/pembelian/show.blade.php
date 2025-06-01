@@ -155,5 +155,4 @@
 @endsection
 
 @push('scripts')
-    {{-- Tidak perlu JS khusus untuk halaman show ini biasanya --}}
 @endpush

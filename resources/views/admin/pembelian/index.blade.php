@@ -3,11 +3,6 @@
 @section('title', 'Kelola Pembelian')
 
 @push('styles')
-    {{-- DataTables CSS --}}
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css">
-    <link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.bootstrap5.min.css">
-    {{-- SweetAlert2 --}}
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
     <style>
         /* Style agar tombol aksi tidak terlalu makan tempat & rapat */
         #pembelian-table .action-buttons form,
@@ -62,8 +57,6 @@
 @endsection
 
 @push('scripts')
-    {{-- SweetAlert2 --}}
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
         $(document).ready(function() {
             var table = $('#pembelian-table').DataTable({
@@ -85,7 +78,7 @@
                     { data: 'action', name: 'action', orderable: false, searchable: false, width: '15%', className: 'action-buttons text-center' }
                 ],
                 language: { 
-                    url: 'https://cdn.datatables.net/plug-ins/1.13.7/i18n/id.json',
+                    url: '{{ asset('js/i18n/id.json') }}',
                     processing: '<div class="spinner-border text-primary spinner-border-sm" role="status"><span class="visually-hidden">Memuat...</span></div>' // Indikator loading custom
                 },
                 order: [[ 3, "desc" ]] // Default order by tanggal pembelian (indeks kolom 3) descending

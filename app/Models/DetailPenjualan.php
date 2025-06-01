@@ -16,10 +16,10 @@ class DetailPenjualan extends Model
         'id_produk',
         'jumlah',
         'harga_jual',
-        'nama_produk_snapshot', 
-        'kode_produk_snapshot', 
-        'subtotal', 
-        'nomor_seri_terjual',
+        'nama_produk_snapshot',
+        'kode_produk_snapshot',
+        'subtotal',
+        'nomor_seri_terjual', 
         'status_bayar_konsinyasi',
         'customer_garansi_mulai_at',
         'customer_garansi_berakhir_at',
@@ -33,26 +33,46 @@ class DetailPenjualan extends Model
         'customer_garansi_berakhir_at' => 'date',
     ];
 
-    // Relasi: DetailPenjualan belongs to Penjualan
     public function penjualan()
     {
         return $this->belongsTo(Penjualan::class, 'id_penjualan');
     }
 
-    // saya hapus karena buat multi batch jadi tidak lagi memakai relasi ini lagi, untuk Relasi: DetailPenjualan belongs to StokBarang (batch yang dijual)
-    // public function stokBarang()
-    // {
-    //     return $this->belongsTo(StokBarang::class, 'id_stok_barang');
-    // }
-
-    // Relasi: DetailPenjualan bisa memiliki satu ReturPenjualan
     public function returPenjualan()
     {
         return $this->hasOne(ReturPenjualan::class, 'id_detail_penjualan');
     }
 
-    public function stokAlokasi()
+    public function produk()
+    {
+        return $this->belongsTo(Produk::class, 'id_produk');
+    }
+
+    /**
+     * Mendapatkan SEMUA alokasi stok (baik pra-alokasi pesanan maupun pengeluaran biasa)
+     * yang terkait dengan detail penjualan ini.
+     */
+    public function stokAlokasi() // Nama ini sudah umum dan bagus
     {
         return $this->hasMany(DetailPenjualanStokAlokasi::class, 'id_detail_penjualan');
+    }
+
+
+    // Anda bisa menambahkan accessor untuk mendapatkan nomor seri terjual sebagai array jika perlu
+    public function getNomorSeriTerjualArrayAttribute()
+    {
+        if (!empty($this->attributes['nomor_seri_terjual'])) {
+            return explode(',', $this->attributes['nomor_seri_terjual']);
+        }
+        return [];
+    }
+
+    public function setNomorSeriTerjualArrayAttribute(array $serials = null)
+    {
+        if (!empty($serials)) {
+            $this->attributes['nomor_seri_terjual'] = implode(',', array_unique($serials)); // Pastikan unik
+        } else {
+            $this->attributes['nomor_seri_terjual'] = null;
+        }
     }
 }

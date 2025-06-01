@@ -3,9 +3,6 @@
 @section('title', 'Kelola Merk')
 
 @push('styles')
-    {{-- DataTables CSS --}}
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css">
-    <link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.bootstrap5.min.css">
      <style>
         #merk-table .action-buttons form { margin-bottom: 0; }
     </style>
@@ -63,16 +60,12 @@
 @endsection
 
 @push('scripts')
-    {{-- SweetAlert2 --}}
-    <script src="//cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
-    {{-- Inisialisasi DataTables Client-Side --}}
     <script>
         $(document).ready(function() {
             $('#merk-table').DataTable({
                 responsive: true,
                 language: {
-                    url: '//cdn.datatables.net/plug-ins/1.13.7/i18n/id.json',
+                    url: '{{ asset('js/i18n/id.json') }}',
                 },
                 // Atur default order by kolom ke-2 (Nama Merk) ascending
                 order: [[1, 'asc']]

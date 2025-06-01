@@ -11,9 +11,8 @@ class LogNomorSeri extends Model
 
     protected $table = 'log_nomor_seri';
 
-    // Laravel tidak menggunakan timestamps() di tabel ini secara default
-    // Jika Anda ingin menggunakan created_at/updated_at, pastikan ada di migrasi
-    // public $timestamps = false; // Uncomment jika tidak ada kolom timestamps
+    
+    public $timestamps = false; 
 
     protected $fillable = [
         'id_produk',
@@ -30,23 +29,20 @@ class LogNomorSeri extends Model
         'tanggal_status' => 'datetime',
     ];
 
-    // Relasi: LogNomorSeri belongs to Produk
     public function produk()
     {
         return $this->belongsTo(Produk::class, 'id_produk');
     }
 
-    // Relasi: LogNomorSeri belongs to StokBarang (asal saat diterima)
     public function stokBarangAsal()
     {
         return $this->belongsTo(StokBarang::class, 'id_stok_barang_asal');
     }
 
-    // Relasi: Polymorphic relationship ke model referensi
-    // Nama method 'referensi' bebas, tapi sesuaikan dengan argumen __FUNCTION__
     public function referensi()
     {
-        // Menggunakan nama kolom dari skema Anda
-        return $this->morphTo(__FUNCTION__, 'tipe_referensi', 'id_referensi');
+        return $this->morphTo(null, 'tipe_referensi', 'id_referensi');
     }
+
+
 }

@@ -29,7 +29,7 @@ class PenggunaSeeder extends Seeder
 
         // Buat User Kasir Contoh
         Pengguna::create([
-            'nama' => 'Kasir Satu',
+            'nama' => 'Roger Jeremy',
             'username' => 'kasir1',
             'password' => Hash::make('kasir123'), // Ganti dengan password aman
             'role' => 'KASIR',
@@ -38,7 +38,7 @@ class PenggunaSeeder extends Seeder
 
          // Buat User Gudang Contoh
          Pengguna::create([
-            'nama' => 'Gudang Satu',
+            'nama' => 'Johan William',
             'username' => 'gudang1',
             'password' => Hash::make('gudang123'), // Ganti dengan password aman
             'role' => 'GUDANG',
@@ -46,6 +46,6 @@ class PenggunaSeeder extends Seeder
         ]);
 
         // Buat beberapa user dummy tambahan (opsional)
-        Pengguna::factory()->count(2)->create(); // Buat 5 user dengan role acak
+        Pengguna::factory()->count(2)->create(); 
     }
 }

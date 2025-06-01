@@ -24,7 +24,7 @@ class CreateLogNomorSeriTable extends Migration
             $table->string('tipe_referensi')->nullable();
             $table->dateTime('tanggal_status')->comment('Waktu kejadian status ini');
             $table->text('catatan')->nullable();
-            $table->timestamps(); // Menggunakan timestamps() standar Laravel
+            
 
             // Index untuk pencarian nomor seri dan polymorphic
             $table->index(['id_produk', 'nomor_seri']); // Index komposit untuk pencarian serial per produk
