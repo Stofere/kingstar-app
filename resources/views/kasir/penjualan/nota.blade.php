@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nota Penjualan - {{ $penjualan->nomor_penjualan }}</title>
-    {{-- Bootstrap hanya digunakan untuk tombol aksi di luar area nota --}}
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body {
@@ -199,6 +198,29 @@
             .footer-nota {
                 font-size: 0.85em;
             }
+
+            /* Letakkan ini di dalam tag <style> */
+
+            .info-retur-container {
+                border: 2px dashed #d9534f; /* Garis putus-putus merah */
+                background-color: #fdf7f7; /* Latar sedikit merah */
+                color: #a94442; /* Warna teks merah gelap */
+                padding: 15px;
+                margin-bottom: 25px; /* Jarak dengan elemen di bawahnya */
+                border-radius: 8px; /* Sudut sedikit melengkung */
+            }
+            .info-retur-container h5 {
+                margin-top: 0;
+                font-weight: bold;
+                font-size: 1.2em;
+            }
+            .info-retur-container ul {
+                padding-left: 20px;
+                margin-bottom: 0;
+            }
+            .info-retur-container li {
+                margin-bottom: 8px;
+            }
         }
     </style>
 </head>
@@ -218,6 +240,59 @@
                 @endif
             </h4>
         </div>
+
+        
+        @if($penjualan->retur && $penjualan->retur->isNotEmpty())
+            @php
+                // Menghitung total kuantitas yang dijual dan yang diretur untuk seluruh nota
+                $totalQtyTerjual = $penjualan->detailPenjualan->sum('jumlah');
+                $totalQtyDiretur = $penjualan->retur->sum('jumlah_retur');
+                
+                // Menentukan status retur berdasarkan perbandingan kuantitas
+                if ($totalQtyDiretur >= $totalQtyTerjual) {
+                    $statusReturTeks = 'DIRETUR PENUH';
+                    $statusReturDeskripsi = 'Seluruh barang pada nota ini telah dikembalikan.';
+                } else {
+                    $statusReturTeks = 'DIRETUR SEBAGIAN';
+                    $statusReturDeskripsi = 'Sebagian barang pada nota ini telah dikembalikan.';
+                }
+            @endphp
+
+            <div class="info-retur-container">
+                {{-- Menampilkan status retur yang sudah dihitung (SEBAGIAN/PENUH) --}}
+                <h5>PEMBERITAHUAN - NOTA {{ $statusReturTeks }}</h5>
+                
+                <p><strong>Peringatan:</strong> {{ $statusReturDeskripsi }}</p>
+                
+                <strong>Detail Retur:</strong>
+                <ul>
+                    @foreach($penjualan->retur as $retur)
+                        <li>
+                            {{-- Informasi dasar barang yang diretur --}}
+                            <strong>{{ $retur->detailPenjualan->nama_produk_snapshot }}</strong>
+                            (Qty: {{ $retur->jumlah_retur }})
+                            
+                            {{-- BARU: Cek dan tampilkan nomor seri yang diretur jika ada --}}
+                            @if(!empty($retur->nomor_seri_diretur))
+                                <br>
+                                <small style="font-weight: 500;">
+                                    SN Diretur: <strong>{{ str_replace(',', ', ', $retur->nomor_seri_diretur) }}</strong>
+                                </small>
+                            @endif
+                            
+                            {{-- Informasi tambahan terkait retur --}}
+                            <br>
+                            <small>
+                                No. Retur: <strong>{{ $retur->nomor_retur }}</strong> |
+                                Tgl: {{ \Carbon\Carbon::parse($retur->tanggal_retur)->isoFormat('D MMM YY') }} |
+                                Alasan: {{ $retur->alasan_retur ?: 'Tidak ada catatan' }}
+                            </small>
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+        @endif
+        
 
         {{-- 2. Informasi Transaksi --}}
         <div class="info-transaksi">

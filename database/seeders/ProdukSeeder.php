@@ -15,9 +15,45 @@ class ProdukSeeder extends Seeder
     public function run()
     {
         $this->command->info('Seeding Produk...');
-        // Buat 50 produk dengan variasi (serial/tanpa serial)
-        Produk::factory()->count(5)->create(); // Produk dengan setting acak dari factory
-        Produk::factory()->count(3)->berserial()->create(); // Pastikan ada 10 produk berserial
-        Produk::factory()->count(2)->tanpaSerial()->create(); // Pastikan ada 10 produk tanpa serial
+        Produk::factory()->count(2)->create(); 
+        Produk::factory()->count(2)->berserial()->create(); 
+        Produk::factory()->count(1)->tanpaSerial()->create(); 
+
+        Produk::create([
+            'id_merk' => null, 
+            'kode_produk' => 'HJBL19',
+            'nama' => 'Hardcase JBL19',
+            'deskripsi' => 'Hardcase JBL19',
+            'harga_jual_standart' => 2500000,
+            'gambar' => null,
+            'satuan' => 'Unit',
+            'memiliki_serial' => false,
+            'durasi_garansi_standar_bulan' => 0,
+            'status' => true,
+        ]);
+        Produk::create([
+            'id_merk' => null,
+            'kode_produk' => 'HA160',
+            'nama' => 'Huper 160',
+            'deskripsi' => 'Huper 160',
+            'harga_jual_standart' => 5000000,
+            'gambar' => null,
+            'satuan' => 'Set',
+            'memiliki_serial' => true,
+            'durasi_garansi_standar_bulan' => 12,
+            'status' => true,
+        ]);
+        Produk::create([
+            'id_merk' => null,
+            'kode_produk' => 'KJXLR',
+            'nama' => 'Kabel Jack XLR',
+            'deskripsi' => 'Kabel Jack XLR',
+            'harga_jual_standart' => 120000,
+            'gambar' => null,
+            'satuan' => 'Pcs',
+            'memiliki_serial' => false,
+            'durasi_garansi_standar_bulan' => 0,
+            'status' => true,
+        ]);
     }
 }

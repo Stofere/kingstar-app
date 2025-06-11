@@ -18,12 +18,16 @@ use App\Http\Controllers\Admin\PembelianController;
 use App\Http\Controllers\Admin\AdminPesanBarangController; 
 use App\Http\Controllers\Admin\LaporanPenjualanController;
 use App\Http\Controllers\Admin\LaporanPembelianController;
+use App\Http\Controllers\Admin\ReturPembelianController;
+use App\Http\Controllers\Admin\LaporanStokController;
+use App\Http\Controllers\Admin\ProsesReturPelangganController;
 
 
 // Kasir Controllers
 use App\Http\Controllers\Kasir\KasirDashboardController;
 use App\Http\Controllers\Kasir\PenjualanController as KasirPenjualanController;
 use App\Http\Controllers\Kasir\KasirPesanBarangController; 
+use App\Http\Controllers\Kasir\ReturPenjualanController;
 
 // Gudang Controllers
 use App\Http\Controllers\Gudang\GudangDashboardController;
@@ -65,20 +69,52 @@ Route::middleware(['auth'])->group(function () {
             Route::get('/', [AdminPesanBarangController::class, 'index'])->name('index');
             Route::get('/{penjualan}/form', [AdminPesanBarangController::class, 'showAlokasiForm'])->name('form');
             Route::post('/{penjualan}/store', [AdminPesanBarangController::class, 'storeAlokasi'])->name('store');
-            // AJAX untuk Admin (bisa diletakkan di sini atau di grup AJAX global jika ada)
             Route::get('/ajax/available-batches', [AdminPesanBarangController::class, 'getAdminAvailableBatchesAjax'])->name('ajax.available_batches');
             Route::get('/ajax/available-serials', [AdminPesanBarangController::class, 'getAdminAvailableSerialsAjax'])->name('ajax.available_serials');
         });
 
         Route::prefix('laporan')->name('laporan.')->group(function () {
-             
             Route::get('/penjualan', [LaporanPenjualanController::class, 'index'])->name('penjualan.index');
             Route::get('/penjualan/data', [LaporanPenjualanController::class, 'getPenjualanData'])->name('penjualan.data'); // Untuk DataTables server-side
-
             Route::get('/pembelian', [LaporanPembelianController::class,'index'])->name('pembelian.index');
             Route::get('/pembelian/data', [LaporanPembelianController::class, 'getPembelianData'])->name('pembelian.data'); // Untuk DataTables server-side
+
+            // --- Laporan Stok ---
+            // Grup prefix 'stok' dengan nama grup 'stok.' agar menghasilkan admin.laporan.stok.
+            Route::prefix('stok')->name('stok.')->group(function () {
+
+                Route::get('/ringkasan-produk', [LaporanStokController::class, 'ringkasanProduk'])->name('ringkasan_produk');
+                // Nama route lengkap: admin.laporan.stok.ringkasan_produk (SESUAI KEINGINAN ANDA)
+
+                Route::get('/detail-batch/{produk}', [LaporanStokController::class, 'detailBatchProduk'])->name('detail_batch_produk');
+                // Nama route lengkap: admin.laporan.stok.detail_batch_produk (SESUAI KEINGINAN ANDA)
+
+                Route::get('/kartu-stok/{produk}', [LaporanStokController::class, 'generateKartuStok'])->name('kartu_stok.data');
+                // Nama route lengkap: admin.laporan.stok.kartu_stok.data (SESUAI KEINGINAN ANDA)
+            });
         });
 
+        Route::prefix('retur-pembelian')->name('retur_pembelian.')->group(function () {
+            Route::get('/', [ReturPembelianController::class, 'index'])->name('index');
+            Route::get('/create', [ReturPembelianController::class, 'create'])->name('create'); 
+            Route::post('/', [ReturPembelianController::class, 'store'])->name('store');
+            Route::get('/{returPembelian}', [ReturPembelianController::class, 'show'])->name('show'); 
+
+            Route::get('/{returPembelian}/edit', [ReturPembelianController::class, 'edit'])->name('edit');
+            Route::put('/{returPembelian}', [ReturPembelianController::class, 'update'])->name('update');
+
+            // AJAX Endpoints
+            Route::get('/ajax/search-batch-stok', [ReturPembelianController::class, 'searchBatchStokAjax'])->name('ajax.search_batch_stok');
+            Route::get('/ajax/get-serials-from-batch', [ReturPembelianController::class, 'getSerialsFromBatchAjax'])->name('ajax.get_serials_from_batch');
+        });
+
+
+
+        Route::prefix('proses-retur-pelanggan')->name('proses_retur_pelanggan.')->group(function () {
+            Route::get('/', [ProsesReturPelangganController::class, 'index'])->name('index'); // Daftar retur menunggu tindakan Admin
+            Route::get('/{returPenjualan}/proses', [ProsesReturPelangganController::class, 'showProsesForm'])->name('proses.form'); // Form untuk Admin memutuskan tindak lanjut
+            Route::post('/{returPenjualan}/store-tindakan', [ProsesReturPelangganController::class, 'storeTindakanAdmin'])->name('store.tindakan'); // Menyimpan keputusan Admin
+        });
 
 
         // AJAX umum Admin
@@ -101,14 +137,38 @@ Route::middleware(['auth'])->group(function () {
 
         // Rute untuk Kasir Menyelesaikan Pesan Barang (Pelunasan & Pengambilan)
         Route::prefix('pesan-barang-selesai')->name('pesan_barang_selesai.')->group(function () {
-            Route::get('/', [KasirPesanBarangController::class, 'index'])->name('index'); // Daftar pesanan menunggu pelunasan/pengambilan
+            Route::get('/', [KasirPesanBarangController::class, 'index'])->name('index'); 
             Route::get('/{penjualan}/form', [KasirPesanBarangController::class, 'showSelesaikanForm'])->name('form');
             Route::post('/{penjualan}/store', [KasirPesanBarangController::class, 'storeSelesaikan'])->name('store');
         });
 
+        // ===>>> RUTE UNTUK RETUR PENJUALAN (TERBARU) <<<===
+        Route::prefix('retur-penjualan')->name('retur_penjualan.')->group(function () {
+            // Langkah 1: Menampilkan daftar retur yang sudah ada
+            Route::get('/', [ReturPenjualanController::class, 'index'])->name('index');
+
+            // Langkah 2: Form untuk mencari transaksi penjualan yang akan diretur
+            Route::get('/cari-transaksi', [ReturPenjualanController::class, 'showCariTransaksiForm'])->name('cari_transaksi');
+
+            // Langkah 3: AJAX endpoint untuk mendapatkan detail transaksi berdasarkan nomor nota
+            Route::get('/ajax/get-transaksi-detail', [ReturPenjualanController::class, 'getTransaksiDetailAjax'])->name('ajax.get_transaksi_detail');
+
+            // Langkah 4: Menampilkan form input detail retur setelah transaksi dipilih
+            // Menggunakan route model binding untuk Penjualan
+            Route::get('/form/{penjualan}', [ReturPenjualanController::class, 'showReturForm'])->name('form');
+
+            // Langkah 5: Menyimpan data retur
+            Route::post('/store/{penjualan}', [ReturPenjualanController::class, 'storeRetur'])->name('store');
+
+            // Langkah 6: Menampilkan detail satu retur penjualan yang sudah dibuat
+            // Menggunakan route model binding untuk ReturPenjualan
+            Route::get('/show/{returPenjualan}', [ReturPenjualanController::class, 'show'])->name('show');
+        });
+        
+
         // AJAX untuk Penjualan Kasir
         Route::get('/ajax/pelanggan/search', [KasirPenjualanController::class, 'searchPelangganAjax'])->name('ajax.pelanggan.search');
-        Route::get('/ajax/produk/search', [KasirPenjualanController::class, 'searchProdukAjax'])->name('ajax.produk.search'); // Ini bisa bentrok dengan AJAX Admin jika tidak hati-hati
+        Route::get('/ajax/produk/search', [KasirPenjualanController::class, 'searchProdukAjax'])->name('ajax.produk.search'); 
         Route::get('/ajax/stok/available', [KasirPenjualanController::class, 'getAvailableStockAjax'])->name('ajax.stok.available');
         Route::get('/ajax/stok/serials', [KasirPenjualanController::class, 'getAvailableSerialsAjax'])->name('ajax.stok.serials');
     });

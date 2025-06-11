@@ -13,29 +13,48 @@ class ReturPenjualan extends Model
 
     protected $fillable = [
         'id_detail_penjualan',
-        'nomor_seri_diretur',
         'id_pengguna',
+        'nomor_retur',
         'jumlah_retur',
-        'alasan',
+        'nomor_seri_diretur',
+        'alasan_retur',
         'catatan_pelanggan',
-        'status_retur',
-        'tanggal_retur',
         'tindakan_lanjut',
+        'catatan_internal_retur',
+        'tanggal_retur',
     ];
 
     protected $casts = [
-        'tanggal_retur' => 'date',
+        'tanggal_retur' => 'datetime', // Atau 'date' jika tidak perlu waktu
     ];
 
-    // Relasi: ReturPenjualan belongs to DetailPenjualan (asal item)
     public function detailPenjualan()
     {
         return $this->belongsTo(DetailPenjualan::class, 'id_detail_penjualan');
     }
 
-    // Relasi: ReturPenjualan belongs to Pengguna (yang memproses)
     public function pengguna()
     {
         return $this->belongsTo(Pengguna::class, 'id_pengguna');
+    }
+
+    // ACCESSOR: Untuk mendapatkan nomor_seri_diretur sebagai array
+    public function getNomorSeriDireturArrayAttribute()
+    {
+        if (!empty($this->attributes['nomor_seri_diretur'])) {
+            return array_map('trim', explode(',', $this->attributes['nomor_seri_diretur']));
+        }
+        return [];
+    }
+
+    // MUTATOR: Untuk menyimpan array nomor seri sebagai string comma-separated
+    // Penggunaan: $returPenjualan->nomor_seri_diretur_array = ['SN1', 'SN2'];
+    public function setNomorSeriDireturArrayAttribute(array $serials = null)
+    {
+        if (!empty($serials)) {
+            $this->attributes['nomor_seri_diretur'] = implode(',', array_map('trim', $serials));
+        } else {
+            $this->attributes['nomor_seri_diretur'] = null;
+        }
     }
 }

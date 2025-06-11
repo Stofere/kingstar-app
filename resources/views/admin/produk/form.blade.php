@@ -90,6 +90,18 @@
                 </div>
             </div>
         </div>
+        
+        <div class="col-md-6">
+            {{-- Stok Minimum --}}
+            <div class="mb-3">
+                <label for="stok_minimum" class="form-label">Stok Minimum Peringatan:</label>
+                <input type="number" class="form-control @error('stok_minimum') is-invalid @enderror"
+                        id="stok_minimum" name="stok_minimum"
+                        value="{{ old('stok_minimum', $produk->stok_minimum ?? 0) }}" min="0" step="1">
+                @error('stok_minimum') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                <small class="form-text text-muted">Isi 0 jika tidak ada batas minimum peringatan.</small>
+            </div>
+        </div>
 
          {{-- Status --}}
         <div class="mb-3">

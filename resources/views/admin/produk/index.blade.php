@@ -38,6 +38,7 @@
                             <th>Harga Jual</th>
                             <th>Serial?</th>
                             <th>Status</th>
+                            <th>Stok Minimum</th>
                             <th>Aksi</th>
                         </tr>
                     </thead>
@@ -67,10 +68,6 @@
 @endsection
 
 @push('scripts')
-    {{-- SweetAlert2 --}}
-    <script src="//cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
-    {{-- Inisialisasi DataTables untuk Server-Side --}}
     <script>
         // Fungsi untuk menampilkan modal gambar
         function showImageModal(imageUrl, imageTitle) {
@@ -96,6 +93,7 @@
                     { data: 'kode_produk', name: 'kode_produk', defaultContent: '-' }, // Kode produk
                     { data: 'harga_jual_standart', name: 'harga_jual_standart' }, // Harga
                     { data: 'memiliki_serial', name: 'memiliki_serial', orderable: false, searchable: false }, // Serial
+                    { data: 'stok_minimum', name: 'stok_minimum', defaultContent: '0', className: 'text-center' }, // Stok Minimum
                     { data: 'status', name: 'status', orderable: false, searchable: false }, // Status
                     { data: 'action', name: 'action', orderable: false, searchable: false, width: '10%' } // Kolom aksi
                 ],
@@ -123,42 +121,6 @@
                     cancelButtonText: 'Batal'
                 }).then((result) => {
                     if (result.isConfirmed) {
-                        // Kirim request hapus via AJAX untuk refresh tabel otomatis
-                        console.log('Data yang akan dikirim:', $(form).serialize());
-                        // $.ajax({
-                        //     url: url,
-                        //     type: 'POST', // Method tetap POST karena ada @method('DELETE')
-                        //     data: $(form).serialize(), // Kirim data form (termasuk _token & _method)
-                        //     dataType: 'json', // Harapkan response JSON dari controller
-                        //     success: function(response) {
-                        //         if(response.success) {
-                        //             Swal.fire(
-                        //                 'Dihapus!',
-                        //                 response.message,
-                        //                 'success'
-                        //             );
-                        //             table.ajax.reload(null, false); // Reload DataTables tanpa reset pagination
-                        //         } else {
-                        //             Swal.fire(
-                        //                 'Gagal!',
-                        //                 response.message,
-                        //                 'error'
-                        //             );
-                        //         }
-                        //     },
-                        //     error: function(xhr, status, error) {
-                        //         // Tangani error AJAX
-                        //         var errorMessage = 'Terjadi kesalahan saat menghapus data.';
-                        //         if(xhr.responseJSON && xhr.responseJSON.message) {
-                        //             errorMessage = xhr.responseJSON.message;
-                        //         }
-                        //         Swal.fire(
-                        //             'Error!',
-                        //             errorMessage,
-                        //             'error'
-                        //         );
-                        //     }
-                        // });
                         form.submit();
                     }
                 })

@@ -88,10 +88,10 @@ class StokBarang extends Model
      }
 
      // Relasi: Satu batch StokBarang bisa memiliki banyak log nomor seri (saat diterima)
-     public function logNomorSeriAsal()
-     {
-         return $this->hasMany(LogNomorSeri::class, 'id_stok_barang_asal');
-     }
+     public function logNomorSeri()
+    {
+        return $this->hasMany(LogNomorSeri::class, 'id_stok_barang_asal');
+    }
 
     public function detailPenjualanAllocations()
     {
@@ -104,5 +104,22 @@ class StokBarang extends Model
         return $this->belongsToMany(DetailPenjualan::class, 'detail_penjualan_stok_alokasi', 'id_stok_barang', 'id_detail_penjualan')
                     ->withPivot('jumlah_diambil')
                     ->withTimestamps();
+    }
+
+    /**
+     * Mendapatkan detail alokasi ke pesanan barang yang masih aktif (belum selesai/batal)
+     * untuk batch stok ini.
+     */
+    public function detailPenjualanAlokasiPesanBarangAktif()
+    {
+        return $this->hasMany(DetailPenjualanStokAlokasi::class, 'id_stok_barang')
+                    ->where('tipe_alokasi', 'DIALOKASIKAN_PESANAN')
+                    ->whereHas('detailPenjualan.penjualan', function ($query) {
+                        $query->whereIn('status_penjualan', [
+                            'MENUNGGU_BARANG',
+                            'MENUNGGU_PELUNASAN',
+                            'SIAP_DIAMBIL'
+                        ]);
+                    });
     }
 }

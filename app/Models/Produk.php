@@ -21,12 +21,14 @@ class Produk extends Model
         'satuan',
         'memiliki_serial',
         'durasi_garansi_standar_bulan',
+        'stok_minimum',
         'status',
     ];
 
     protected $casts = [
         'harga_jual_standart' => 'decimal:2',
         'memiliki_serial' => 'boolean',
+        'stok_minimum' => 'integer',
         'status' => 'boolean',
     ];
 
@@ -45,7 +47,9 @@ class Produk extends Model
     // Relasi: Produk bisa memiliki banyak batch stok
     public function stokBarang()
     {
-        return $this->hasMany(StokBarang::class, 'id_produk');
+        // Parameter kedua adalah foreign key di tabel stok_barang
+        // Parameter ketiga adalah local key di tabel produk (biasanya 'id')
+        return $this->hasMany(StokBarang::class, 'id_produk', 'id');
     }
 
      // Relasi: Produk bisa memiliki banyak log nomor seri
@@ -53,4 +57,10 @@ class Produk extends Model
      {
          return $this->hasMany(LogNomorSeri::class, 'id_produk');
      }
+
+     // Relasi ke DetailPenjualan untuk memudahkan query stok dipesan
+    public function detailPenjualan()
+    {
+        return $this->hasMany(DetailPenjualan::class, 'id_produk');
+    }
 }

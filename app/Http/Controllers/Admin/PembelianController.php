@@ -7,15 +7,15 @@ use App\Models\Pembelian;
 use App\Models\DetailPembelian; // Import DetailPembelian
 use App\Models\Supplier;      // Import Supplier
 use App\Models\Produk;        // Import Produk (untuk create/edit)
-use App\Http\Requests\StorePembelianRequest;   // Ganti dengan request Anda
-use App\Http\Requests\UpdatePembelianRequest;   // Ganti dengan request Anda
+use App\Http\Requests\StorePembelianRequest;  
+use App\Http\Requests\UpdatePembelianRequest;  
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;       // Untuk Transaksi Database
 use Illuminate\Support\Facades\Auth;    // Untuk mendapatkan ID pengguna
 use Yajra\DataTables\Facades\DataTables; // Import DataTables
 use Carbon\Carbon;                      // Import Carbon untuk format tanggal
 use Illuminate\Http\JsonResponse;
-use PhpParser\Node\Stmt\Return_;
+
 
 class PembelianController extends Controller
 {

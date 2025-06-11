@@ -254,94 +254,76 @@ class PenjualanController extends Controller
             ]);
 
             // 5. Proses Detail Penjualan dan Stok
-            foreach ($validated['items'] as $itemData) {
-                $produk = Produk::find($itemData['id_produk']);
-                if (!$produk) {
-                    DB::rollBack();
-                    return redirect()->back()->with('error', "Produk dengan ID {$itemData['id_produk']} tidak ditemukan.")->withInput();
-                }
+        foreach ($validated['items'] as $itemData) {
+            $produk = Produk::find($itemData['id_produk']);
+            if (!$produk) { throw new \Exception("Produk dengan ID {$itemData['id_produk']} tidak ditemukan."); }
 
-                $subtotal = (int)$itemData['jumlah'] * (float)$itemData['harga_jual'];
+            $detailPenjualan = $penjualan->detailPenjualan()->create([
+                'id_penjualan' => $penjualan->id,
+                'id_produk' => $itemData['id_produk'],
+                'jumlah' => $itemData['jumlah'],
+                'harga_jual' => $itemData['harga_jual'],
+                'nama_produk_snapshot' => $produk->nama,
+                'kode_produk_snapshot' => $produk->kode_produk,
+                'subtotal' => (int)$itemData['jumlah'] * (float)$itemData['harga_jual'],
+                'status_bayar_konsinyasi' => 'BELUM_RELEVAN',
+            ]);
 
-                $detailPenjualan = DetailPenjualan::create([
-                    'id_penjualan' => $penjualan->id,
-                    'id_produk' => $itemData['id_produk'],
-                    'jumlah' => $itemData['jumlah'],
-                    'harga_jual' => $itemData['harga_jual'],
-                    'nama_produk_snapshot' => $produk->nama,
-                    'kode_produk_snapshot' => $produk->kode_produk,
-                    'subtotal' => $subtotal,
-                    'status_bayar_konsinyasi' => 'BELUM_RELEVAN', // Default
-                    // nomor_seri_terjual dan garansi akan di-handle di bawah jika bukan PESAN_BARANG
-                ]);
+            if ($validated['tipe_transaksi'] === 'BIASA') {
+                if (!isset($itemData['stok_allocations'])) { throw new \Exception("Data alokasi stok tidak ditemukan untuk produk {$produk->nama}."); }
+                
+                $stokAllocations = json_decode($itemData['stok_allocations'], true);
+                if (json_last_error() !== JSON_ERROR_NONE) { throw new \Exception("Format data alokasi stok tidak valid untuk produk {$produk->nama}.");}
 
-                // HANYA PROSES ALOKASI STOK, SERIAL, GARANSI JIKA TIPE TRANSAKSI 'BIASA'
-                if ($validated['tipe_transaksi'] === 'BIASA') {
-                    // Pastikan stok_allocations ada dan valid (meskipun sudah divalidasi di request)
-                    if (!isset($itemData['stok_allocations'])) {
-                         DB::rollBack();
-                         return redirect()->back()->with('error', "Data alokasi stok tidak ditemukan untuk produk {$produk->nama} pada transaksi biasa.")->withInput();
-                    }
-                    $stokAllocations = json_decode($itemData['stok_allocations'], true);
-                    if (json_last_error() !== JSON_ERROR_NONE || !is_array($stokAllocations) || empty($stokAllocations)) {
-                        DB::rollBack();
-                        return redirect()->back()->with('error', "Format data alokasi stok tidak valid atau kosong untuk produk {$produk->nama} pada transaksi biasa.")->withInput();
-                    }
+                $allSerialsForItem = [];
+                $isKonsinyasiItem = false;
+                $tipeGaransiTerpilihUntukPelanggan = 'NONE';
 
-                    $allSerialsForItem = [];
-                    $isKonsinyasiItem = false;
-                    $tipeGaransiTerpilihUntukPelanggan = 'NONE';
+                foreach ($stokAllocations as $alloc) {
+                    $stokBarang = StokBarang::lockForUpdate()->find($alloc['id_stok_barang']);
+                    if (!$stokBarang || $stokBarang->jumlah < $alloc['qty_allocated']) { throw new \Exception("Stok untuk Batch ID {$alloc['id_stok_barang']} tidak mencukupi."); }
 
-                    foreach ($stokAllocations as $alloc) {
-                        if (!isset($alloc['id_stok_barang']) || !isset($alloc['qty_allocated'])) {
-                            DB::rollBack();
-                            return redirect()->back()->with('error', "Data alokasi batch tidak lengkap untuk produk {$produk->nama}.")->withInput();
-                        }
+                    $stokBarang->decrement('jumlah', $alloc['qty_allocated']);
+                    $detailPenjualan->stokAlokasi()->create(['id_stok_barang' => $stokBarang->id, 'jumlah_diambil' => $alloc['qty_allocated']]);
 
-                        $stokBarang = StokBarang::lockForUpdate()->find($alloc['id_stok_barang']);
-                        if (!$stokBarang || $stokBarang->jumlah < $alloc['qty_allocated']) {
-                            DB::rollBack();
-                            return redirect()->back()->with('error', "Stok untuk Batch ID {$alloc['id_stok_barang']} (Produk: {$produk->nama}) tidak mencukupi atau tidak valid saat proses penyimpanan.")->withInput();
-                        }
+                    if ($stokBarang->tipe_stok === 'KONSINYASI') { $isKonsinyasiItem = true; }
+                    if ($stokBarang->tipe_garansi === 'RESMI') { $tipeGaransiTerpilihUntukPelanggan = 'RESMI'; } 
+                    elseif ($tipeGaransiTerpilihUntukPelanggan !== 'RESMI' && $stokBarang->tipe_garansi === 'SELF_SERVICE') { $tipeGaransiTerpilihUntukPelanggan = 'SELF_SERVICE'; }
 
-                        $stokBarang->decrement('jumlah', $alloc['qty_allocated']);
+                    // ================================================================
+                    // === LOG NOMOR SERI  (CREATE) ===
+                    // ================================================================
+                    if ($produk->memiliki_serial && isset($alloc['serials_selected']) && is_array($alloc['serials_selected'])) {
+                        foreach ($alloc['serials_selected'] as $serialNumber) {
+                            $trimmedSn = trim($serialNumber);
+                            if(empty($trimmedSn)) continue;
 
-                        $detailPenjualan->stokAlokasi()->create([
-                            'id_stok_barang' => $stokBarang->id,
-                            'jumlah_diambil' => $alloc['qty_allocated']
-                        ]);
-
-                        if ($stokBarang->tipe_stok === 'KONSINYASI') {
-                            $isKonsinyasiItem = true;
-                        }
-
-                        if ($stokBarang->tipe_garansi === 'RESMI') {
-                            $tipeGaransiTerpilihUntukPelanggan = 'RESMI';
-                        } elseif ($tipeGaransiTerpilihUntukPelanggan !== 'RESMI' && $stokBarang->tipe_garansi === 'SELF_SERVICE') {
-                            $tipeGaransiTerpilihUntukPelanggan = 'SELF_SERVICE';
-                        }
-
-                        if ($produk->memiliki_serial && isset($alloc['serials_selected']) && is_array($alloc['serials_selected'])) {
-                            foreach ($alloc['serials_selected'] as $serialNumber) {
-                                $logSerial = LogNomorSeri::where('id_stok_barang_asal', $stokBarang->id)
-                                                        ->where('nomor_seri', trim($serialNumber))
-                                                        ->where('status_log', 'DITERIMA')
-                                                        ->first();
-                                if ($logSerial) {
-                                    $logSerial->update([
-                                        'status_log' => 'TERJUAL',
-                                        'id_referensi' => $detailPenjualan->id,
-                                        'tipe_referensi' => DetailPenjualan::class,
-                                        'tanggal_status' => $tanggalPenjualan,
-                                    ]);
-                                    $allSerialsForItem[] = trim($serialNumber);
-                                } else {
-                                    DB::rollBack();
-                                    return redirect()->back()->with('error', "Nomor Seri '{$serialNumber}' untuk Produk {$produk->nama} dari Batch ID {$stokBarang->id} tidak ditemukan atau statusnya tidak valid.")->withInput();
-                                }
+                            // 1. Validasi: Pastikan serial ini ada dan statusnya 'DITERIMA' dari batch yang benar
+                            $logTersedia = LogNomorSeri::where('nomor_seri', $trimmedSn)
+                                                      ->where('id_stok_barang_asal', $stokBarang->id)
+                                                      ->where('status_log', 'DITERIMA')
+                                                      ->first();
+                            
+                            if (!$logTersedia) {
+                                throw new \Exception("Nomor Seri '{$trimmedSn}' untuk Produk {$produk->nama} dari Batch ID {$stokBarang->id} tidak ditemukan atau statusnya bukan 'DITERIMA'.");
                             }
+
+                            // 2. Buat Log BARU dengan status 'TERJUAL'
+                            LogNomorSeri::create([
+                                'id_produk' => $produk->id,
+                                'id_stok_barang_asal' => $stokBarang->id, // Tetap catat batch asal
+                                'nomor_seri' => $trimmedSn,
+                                'status_log' => 'TERJUAL',
+                                'id_referensi' => $detailPenjualan->id,
+                                'tipe_referensi' => DetailPenjualan::class,
+                                'tanggal_status' => $tanggalPenjualan,
+                                'catatan' => 'Terjual melalui nota ' . $penjualan->nomor_penjualan,
+                            ]);
+                            
+                            $allSerialsForItem[] = $trimmedSn;
                         }
-                    } // End loop alokasi batch
+                    }
+                } // End loop alokasi batch
 
                     // Update DetailPenjualan dengan info gabungan untuk transaksi BIASA
                     $updateDataDetail = [];
@@ -394,7 +376,6 @@ class PenjualanController extends Controller
                 }
             }
 
-
             DB::commit();
             // Simpan ID Penjualan di session untuk diakses dihalaman create
             session()->flash('last_penjualan_id_for_nota', $penjualan->id);
@@ -437,26 +418,31 @@ class PenjualanController extends Controller
         return $prefix . str_pad($nextSequence, 3, '0', STR_PAD_LEFT); // Urutan 3 digit, misal 001, 002, ... 010, ... 100
     }
     
+    /**
+     * Menampilkan halaman nota penjualan untuk dicetak.
+     *
+     * @param  int  $id ID Penjualan
+     * @return \Illuminate\View\View
+     */
     public function showNota($id)
     {
-        $penjualan = Penjualan::with([
+        // Menggunakan eager loading untuk memuat semua relasi yang dibutuhkan dalam satu query
+        $penjualan = \App\Models\Penjualan::with([
             'pelanggan',
             'pengguna',
             'detailPenjualan' => function ($query) {
-                $query->with(['produk', 'stokAlokasi.stokBarang']); //eager load produk dan batch asal
-            }
+                // Eager load relasi turunan dari detailPenjualan
+                $query->with(['produk', 'stokAlokasi.stokBarang']); 
+            },
+            'retur.detailPenjualan' // BARU: Memuat relasi retur dan detail penjualannya
         ])->findOrFail($id);
-        // informasi garansi dan serial spesifik
-        foreach ($penjualan->detailPenjualan as $detail) {
-            // informasi garansi sdh ada di $detail->customer_garansi_mulai_at dan berakhir at
-            // tipe garansi bisa diambil dari batch pertama yang resmi
 
-        }
-
+        // Variabel statis untuk informasi toko
         $namaToko = "KINGSTAR ELEKTRONIK";
         $alamatToko = "Pasar Genteng Baru Lt. 2 Blok N no. 20, Surabaya";
         $teleponToko = "081290808046";
         
+        // Mengirim data ke view
         return view('kasir.penjualan.nota', compact(
             'penjualan',
             'namaToko',

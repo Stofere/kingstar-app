@@ -141,13 +141,15 @@
                                 </li>
                                  <li class="nav-item"><a class="nav-link {{ request()->routeIs('admin.pengguna.*') ? 'active' : '' }}" href="{{ route('admin.pengguna.index') }}"><i class="bi bi-people me-1"></i> Pengguna</a></li>
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('admin.pembelian.*') ? 'active' : '' }}" href="{{ route('admin.pembelian.index')}}"><i class="bi bi-basket3 me-1"></i> Pembelian</a></li>
+                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('admin.retur_pembelian.*') ? 'active' : '' }}" href="{{ route('admin.retur_pembelian.index') }}"><i class="bi bi-upload me-1"></i> Retur Pembelian</a></li>
+                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('admin.proses_retur_pelanggan.*') ? 'active' : '' }}" href="{{ route('admin.proses_retur_pelanggan.index') }}"><i class="bi bi-person-gear me-1"></i> Proses Retur Pelanggan</a></li>
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('admin.pesan_barang_alokasi.*') ? 'active' : '' }}" href="{{ route('admin.pesan_barang_alokasi.index') }}"><i class="bi bi-clipboard-data me-1"></i> Alokasi Pesanan</a></li>
                                 <li class="nav-item dropdown">
-                                    <a class="nav-link dropdown-toggle {{ str_contains(Route::currentRouteName(), 'admin.laporan') ? 'active' : '' }}" href="#" data-bs-toggle="dropdown"><i class="bi bi-file-earmark-bar-graph me-1"></i> Laporan</a>
+                                    <a class="nav-link dropdown-toggle {{ str_contains(Route::currentRouteName(), 'admin.laporan') || str_contains(Route::currentRouteName(), 'admin.laporan.stok') ? 'active' : '' }}" href="#" data-bs-toggle="dropdown"><i class="bi bi-file-earmark-bar-graph me-1"></i> Laporan</a>
                                     <ul class="dropdown-menu">
                                         <li><a class="dropdown-item {{ request()->routeIs('admin.laporan.penjualan.*') ? 'active' : '' }}" href="{{ route('admin.laporan.penjualan.index') }}">Penjualan</a></li>
                                         <li><a class="dropdown-item {{ request()->routeIs('admin.laporan.pembelian.*') ? 'active' : '' }}" href="{{ route('admin.laporan.pembelian.index') }}">Pembelian</a></li>
-                                        {{-- <li><a class="dropdown-item" href="#">Stok</a></li> --}}
+                                        <li><a class="dropdown-item {{ request()->routeIs('admin.laporan.stok.*') ? 'active' : '' }}" href="{{ route('admin.laporan.stok.ringkasan_produk') }}">Laporan Stok</a></li>
                                     </ul>
                                 </li>
 
@@ -155,6 +157,7 @@
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('kasir.dashboard') ? 'active' : '' }}" href="{{ route('kasir.dashboard') }}"><i class="bi bi-speedometer2 me-1"></i> Dashboard</a></li>
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('kasir.penjualan.create') ? 'active' : '' }}" href="{{ route('kasir.penjualan.create') }}"><i class="bi bi-cart-plus me-1"></i> Penjualan Baru</a></li>
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('kasir.pesan_barang_selesai.*') ? 'active' : '' }}" href="{{ route('kasir.pesan_barang_selesai.index') }}"><i class="bi bi-box-seam me-1"></i> Selesaikan Pesanan</a></li>
+                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('kasir.retur_penjualan.*') ? 'active' : '' }}" href="{{ route('kasir.retur_penjualan.index') }}"><i class="bi bi-arrow-return-left me-1"></i> Retur Penjualan</a></li>
                                 {{-- <li class="nav-item"><a class="nav-link" href="#"><i class="bi bi-calendar-day me-1"></i> Transaksi Hari Ini</a></li> --}}
 
                             @elseif(Auth::user()->role == 'GUDANG')

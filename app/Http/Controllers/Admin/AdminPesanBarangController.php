@@ -12,7 +12,6 @@ use App\Models\DetailPenjualanStokAlokasi;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 use Illuminate\Validation\Rule;
 
@@ -186,38 +185,35 @@ class AdminPesanBarangController extends Controller
 
     protected function prepareAlokasiItems(Request $request)
     {
-        Log::info('prepareAlokasiItems - Input Awal:', $request->all());
         $input = $request->all();
         if (isset($input['alokasi_items']) && is_array($input['alokasi_items'])) {
             foreach ($input['alokasi_items'] as $key => $itemAlokasi) {
-                Log::info("prepareAlokasiItems - Processing item key: {$key}", $itemAlokasi);
                 if (isset($itemAlokasi['alokasi_batch']) && is_string($itemAlokasi['alokasi_batch'])) {
                     $jsonString = $itemAlokasi['alokasi_batch'];
-                    Log::info("prepareAlokasiItems - JSON string untuk key {$key}: " . $jsonString);
+                    
 
                     $decoded = json_decode($jsonString, true);
                     $jsonError = json_last_error();
 
-                    Log::info("prepareAlokasiItems - Hasil json_decode untuk key {$key}:", is_array($decoded) ? $decoded : ['result_type' => gettype($decoded)]);
-                    Log::info("prepareAlokasiItems - json_last_error() untuk key {$key}: " . $jsonError . " (" . json_last_error_msg() . ")");
+                    
 
                     if ($jsonError === JSON_ERROR_NONE && is_array($decoded)) {
                         $input['alokasi_items'][$key]['alokasi_batch'] = $decoded;
-                        Log::info("prepareAlokasiItems - BERHASIL decode untuk key {$key}.");
+                       
                     } else {
                         $input['alokasi_items'][$key]['alokasi_batch'] = []; // Tetap jadi array kosong jika gagal
-                        Log::error("prepareAlokasiItems - GAGAL decode JSON atau bukan array untuk key {$key}. String asli: " . $jsonString . ". Error: " . json_last_error_msg());
+                        
                     }
                 } elseif (!isset($itemAlokasi['alokasi_batch'])) {
                     $input['alokasi_items'][$key]['alokasi_batch'] = [];
-                    Log::info("prepareAlokasiItems - Key 'alokasi_batch' TIDAK ADA untuk item key: {$key}. Di-set ke array kosong.");
+                   
                 } elseif (!is_array($itemAlokasi['alokasi_batch'])) {
                     $input['alokasi_items'][$key]['alokasi_batch'] = [];
-                    Log::info("prepareAlokasiItems - 'alokasi_batch' BUKAN ARRAY untuk item key: {$key}. Di-set ke array kosong. Tipe asli: " . gettype($itemAlokasi['alokasi_batch']));
+                   
                 }
             }
             $request->replace($input);
-            Log::info('prepareAlokasiItems - Input Setelah Transformasi:', $request->all());
+           
         }
     }
 
@@ -227,7 +223,7 @@ class AdminPesanBarangController extends Controller
      */
     public function storeAlokasi(Request $request, Penjualan $penjualan)
 {
-    Log::info("RAW Request Data for Alokasi Penjualan ID: {$penjualan->id}", $request->all()); // Log data mentah
+
     $this->prepareAlokasiItems($request); // Panggil transformasi di awal
 
     $validated = $request->validate([
@@ -251,7 +247,7 @@ class AdminPesanBarangController extends Controller
         'alokasi_items.*.alokasi_batch.*.qty_dialokasikan.min' => 'Kuantitas alokasi minimal 1.',
     ]);
 
-    Log::info("Data Alokasi Admin yang Divalidasi untuk Penjualan ID: {$penjualan->id}", $validated);
+
 
     if ($penjualan->tipe_transaksi !== 'PESAN_BARANG' || !in_array($penjualan->status_penjualan, ['MENUNGGU_BARANG', 'MENUNGGU_PELUNASAN'])) {
         // Jika status sudah SIAP_DIAMBIL atau SELESAI, mungkin tidak boleh dialokasi ulang tanpa proses lain
@@ -269,10 +265,10 @@ class AdminPesanBarangController extends Controller
                                     ->delete();
 
         $semuaItemTargetTeralokasiPenuh = true; // Flag untuk mengecek apakah semua item di pesanan sudah dipenuhi alokasinya
-        Log::info("Memulai loop detail pesanan. Jumlah detail: " . $penjualan->detailPenjualan->count());
+
 
         foreach ($penjualan->detailPenjualan as $detailPesan) { // Loop berdasarkan item di pesanan
-            Log::info("Processing DetailPesan ID: {$detailPesan->id}, Produk ID: {$detailPesan->produk->id}, Jml Dipesan: {$detailPesan->jumlah}");
+           
             $totalQtyDipesanUntukItemIni = $detailPesan->jumlah;
             $totalQtyBaruDialokasikanUntukItemIni = 0;
             $produkItem = $detailPesan->produk; // Produk dari item pesanan
@@ -282,35 +278,32 @@ class AdminPesanBarangController extends Controller
             foreach ($validated['alokasi_items'] as $itemAlokasiInput) {
                 if ($itemAlokasiInput['id_detail_penjualan'] == $detailPesan->id) {
                     $dataAlokasiUntukDetailIni = $itemAlokasiInput;
-                    Log::info("Data alokasi ditemukan untuk DetailPesan ID {$detailPesan->id}", $dataAlokasiUntukDetailIni);
+                   
                     break;
                 }
             }
 
             // Jika tidak ada alokasi_batch yang dikirim untuk item ini, tetapi item ini ada di pesanan
             if (!$dataAlokasiUntukDetailIni) {
-                Log::warning("Tidak ada data alokasi dari input untuk DetailPesan ID {$detailPesan->id}.");
+                
                 if ($totalQtyDipesanUntukItemIni > 0) {
                     $semuaItemTargetTeralokasiPenuh = false;
-                    Log::info("Item DetailPesan ID {$detailPesan->id} belum teralokasi penuh (tidak ada data alokasi).");
+                    
                 }
                 continue;
             }
 
             if (empty($dataAlokasiUntukDetailIni['alokasi_batch'])) {
-                Log::warning("Array 'alokasi_batch' kosong untuk DetailPesan ID {$detailPesan->id}.");
                 if ($totalQtyDipesanUntukItemIni > 0) {
                     $semuaItemTargetTeralokasiPenuh = false;
-                    Log::info("Item DetailPesan ID {$detailPesan->id} belum teralokasi penuh (alokasi_batch kosong).");
                 }
                 continue;
             }
 
-            Log::info("Memulai loop alokasi_batch untuk DetailPesan ID {$detailPesan->id}. Jumlah batch dialokasikan: " . count($dataAlokasiUntukDetailIni['alokasi_batch']));
+          
 
 
             foreach ($dataAlokasiUntukDetailIni['alokasi_batch'] as $batchAlokasi) {
-                Log::info("Processing batchAlokasi:", $batchAlokasi);
                 $stokBarang = StokBarang::find($batchAlokasi['id_stok_barang']); // Tidak perlu lockForUpdate di sini, karena kita tidak mengurangi stok fisik
 
                 if (!$stokBarang || $stokBarang->id_produk !== $produkItem->id) {
@@ -368,7 +361,7 @@ class AdminPesanBarangController extends Controller
                         }
                     }
                 }
-                Log::info("Akan membuat DetailPenjualanStokAlokasi untuk DetailPesan ID {$detailPesan->id} dari Batch ID {$stokBarang->id} Qty {$qtyDialokasikanDariBatchIni}");
+               
                 DetailPenjualanStokAlokasi::create([
                     'id_detail_penjualan' => $detailPesan->id,
                     'id_stok_barang' => $stokBarang->id,
@@ -378,15 +371,15 @@ class AdminPesanBarangController extends Controller
                     'dialokasikan_oleh' => Auth::id(),
                     'dialokasikan_at' => now(),
                 ]);
-                Log::info("BERHASIL membuat DetailPenjualanStokAlokasi.");
+                
             } // end foreach alokasi_batch untuk satu item detail
 
-            Log::info("Selesai loop alokasi_batch untuk DetailPesan ID {$detailPesan->id}. Total baru dialokasikan: {$totalQtyBaruDialokasikanUntukItemIni}");
+            
             if ($totalQtyBaruDialokasikanUntukItemIni < $totalQtyDipesanUntukItemIni) {
                 $semuaItemTargetTeralokasiPenuh = false;
-                Log::info("Item DetailPesan ID {$detailPesan->id} TIDAK teralokasi penuh.");
+               
             } else {
-                Log::info("Item DetailPesan ID {$detailPesan->id} SUDAH teralokasi penuh.");
+              
             }
         } // end foreach detail_penjualan dari pesanan
 
@@ -410,7 +403,7 @@ class AdminPesanBarangController extends Controller
             // Beri pesan bahwa alokasi belum penuh jika redirect
             session()->flash('warning', "Alokasi stok untuk pesanan {$penjualan->nomor_penjualan} belum lengkap. Beberapa item belum terpenuhi.");
         }
-        Log::info("Final flag semuaItemTargetTeralokasiPenuh: " . ($semuaItemTargetTeralokasiPenuh ? 'true' : 'false'));
+        
         $penjualan->save();
 
         DB::commit();
@@ -419,11 +412,11 @@ class AdminPesanBarangController extends Controller
 
     } catch (\Illuminate\Validation\ValidationException $e) {
         DB::rollBack();
-        Log::error("Validation Error storeAlokasi Admin untuk Penjualan ID {$penjualan->id}: ", $e->errors());
+        
         return redirect()->back()->withErrors($e->errors())->withInput();
     } catch (\Exception $e) {
         DB::rollBack();
-        Log::error("Error storeAlokasi Admin untuk Penjualan ID {$penjualan->id}: " . $e->getMessage() . " - Line: " . $e->getLine() . " - File: " . $e->getFile());
+       
         return redirect()->back()->with('error', 'Gagal menyimpan alokasi: ' . $e->getMessage())->withInput();
     }
 }

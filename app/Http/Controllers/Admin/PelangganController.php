@@ -7,7 +7,7 @@ use App\Models\Pelanggan; // Import model Pelanggan
 use App\Http\Requests\StorePelangganRequest; // Import Form Request
 use App\Http\Requests\UpdatePelangganRequest; // Import Form Request
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB; // Untuk transaksi database (opsional untuk CRUD sederhana)
+use Illuminate\Support\Facades\DB; 
 use Yajra\DataTables\Facades\DataTables; 
 
 class PelangganController extends Controller
@@ -69,20 +69,18 @@ class PelangganController extends Controller
         // Data sudah divalidasi oleh StorePelangganRequest
         $validatedData = $request->validated();
 
-        // DB::beginTransaction(); // Opsional untuk CRUD sederhana
+        
         try {
             Pelanggan::create($validatedData);
 
-            // DB::commit(); // Opsional
+
             return redirect()->route('admin.pelanggan.index')
                              ->with('success', 'Data pelanggan berhasil ditambahkan.');
 
         } catch (\Exception $e) {
-            // DB::rollBack(); // Opsional
-            // Log error jika perlu: Log::error('Error store pelanggan: '. $e->getMessage());
             return redirect()->back()
                              ->with('error', 'Terjadi kesalahan saat menyimpan data pelanggan: ' . $e->getMessage())
-                             ->withInput(); // Kembalikan input lama ke form
+                             ->withInput(); 
         }
     }
 
@@ -122,16 +120,16 @@ class PelangganController extends Controller
         // Data sudah divalidasi oleh UpdatePelangganRequest
         $validatedData = $request->validated();
 
-        // DB::beginTransaction(); // Opsional
+        // DB::beginTransaction(); 
         try {
             $pelanggan->update($validatedData);
 
-            // DB::commit(); // Opsional
+            // DB::commit(); 
             return redirect()->route('admin.pelanggan.index')
                              ->with('success', 'Data pelanggan berhasil diperbarui.');
 
         } catch (\Exception $e) {
-            // DB::rollBack(); // Opsional
+            // DB::rollBack(); 
             // Log error jika perlu: Log::error('Error update pelanggan: '. $e->getMessage());
             return redirect()->back()
                              ->with('error', 'Terjadi kesalahan saat memperbarui data pelanggan: ' . $e->getMessage())
@@ -148,18 +146,18 @@ class PelangganController extends Controller
      */
     public function destroy(Pelanggan $pelanggan)
     {
-        // DB::beginTransaction(); // Opsional
+        // DB::beginTransaction(); 
         try {
             $pelanggan->delete();
 
-            // DB::commit(); // Opsional
+            // DB::commit(); 
             return response()->json([
                 'success' => true,
                 'message' => 'Data pelanggan berhasil dihapus.'
             ]);
 
         } catch (\Illuminate\Database\QueryException $e) {
-            // DB::rollBack(); // Opsional
+            // DB::rollBack(); 
             // Tangani error spesifik (misal: foreign key jika pelanggan masih terkait transaksi)
             $errorMessage = 'Gagal menghapus data pelanggan.';
             if ($e->getCode() == '23000') { // Kode error constraint violation (tergantung DB)
@@ -171,7 +169,7 @@ class PelangganController extends Controller
                 'message' => $errorMessage
             ], 500); // Internal Server Error
         } catch (\Exception $e) {
-            // DB::rollBack(); // Opsional
+            // DB::rollBack(); 
             // Log::error('Error delete pelanggan: '. $e->getMessage());
             return response()->json([
                 'success' => false,

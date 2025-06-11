@@ -10,7 +10,7 @@ use App\Http\Requests\UpdateProdukRequest;
 use Illuminate\Http\Request; 
 use Illuminate\Support\Facades\Storage;
 use Yajra\DataTables\Facades\DataTables;
-use Illuminate\Http\JsonResponse; // Import JsonResponse untuk type hinting
+use Illuminate\Http\JsonResponse; 
 
 
 class ProdukController extends Controller
@@ -111,6 +111,7 @@ class ProdukController extends Controller
         // Konversi boolean dari form (nilai '1' atau '0') ke boolean PHP
         $validated['memiliki_serial'] = filter_var($request->input('memiliki_serial', false), FILTER_VALIDATE_BOOLEAN);
         $validated['status'] = filter_var($request->input('status', true), FILTER_VALIDATE_BOOLEAN);
+        $validated['stok_minimum'] = $request->input('stok_minimum', 0); // Set default stok minimum jika tidak diisi
 
         // Buat record produk baru di database
         Produk::create($validated);
@@ -167,6 +168,10 @@ class ProdukController extends Controller
         // Konversi boolean dari form ('1'/'0') ke boolean PHP
         $validated['memiliki_serial'] = filter_var($request->input('memiliki_serial', false), FILTER_VALIDATE_BOOLEAN);
         $validated['status'] = filter_var($request->input('status', true), FILTER_VALIDATE_BOOLEAN);
+
+        if ($request->has('stok_minimum')) { // Cek apakah field dikirim
+            $validated['stok_minimum'] = $request->input('stok_minimum', $produk->stok_minimum);
+        }
 
         // Update data produk di database
         $produk->update($validated);

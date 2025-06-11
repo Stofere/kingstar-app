@@ -42,6 +42,8 @@ class StoreProdukRequest extends FormRequest
             'memiliki_serial' => 'required|in:0,1',
             // durasi garansi boleh null, tapi jika diisi harus integer >= 0
             'durasi_garansi_standar_bulan' => 'nullable|integer|min:0',
+            // stok_minimum boleh null, tapi jika diisi harus integer >= 0
+            'stok_minimum' => 'nullable|integer|min:0',
             // status wajib diisi dan harus boolean (tervalidasi dari input '1'/'0')
             'status' => 'required|in:0,1',
         ];

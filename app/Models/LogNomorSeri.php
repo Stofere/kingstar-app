@@ -44,5 +44,9 @@ class LogNomorSeri extends Model
         return $this->morphTo(null, 'tipe_referensi', 'id_referensi');
     }
 
+    public function retur()
+    {
+        return $this->belongsTo(ReturPenjualan::class, 'id_referensi');
+    }
 
 }

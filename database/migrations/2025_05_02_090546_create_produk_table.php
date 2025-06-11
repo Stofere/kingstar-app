@@ -25,6 +25,7 @@ class CreateProdukTable extends Migration
             $table->string('satuan', 50)->default('PCS');
             $table->boolean('memiliki_serial')->default(false)->comment('1=Ya, 0=Tidak');
             $table->unsignedSmallInteger('durasi_garansi_standar_bulan')->nullable()->comment('Durasi garansi pelanggan dlm bulan (jika ada)');
+            $table->integer('stok_minimum')->unsigned()->default(0)->comment('Batas stok minimum untuk peringatan stok menipis');
             $table->boolean('status')->default(true)->comment('1=Aktif, 0=Tidak Aktif');
             $table->timestamps();
         });

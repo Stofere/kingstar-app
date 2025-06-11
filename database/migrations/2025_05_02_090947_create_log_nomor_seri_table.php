@@ -28,7 +28,6 @@ class CreateLogNomorSeriTable extends Migration
 
             // Index untuk pencarian nomor seri dan polymorphic
             $table->index(['id_produk', 'nomor_seri']); // Index komposit untuk pencarian serial per produk
-            $table->unique(['id_produk', 'nomor_seri']); // Membuat nomor seri unik per produk
             $table->index(['id_referensi', 'tipe_referensi']);
             $table->index('status_log');
         });

@@ -85,20 +85,13 @@ class PenerimaanController extends Controller
         if ($pembelian) {
             // 1. Load relasi detailPembelian dengan constraint
             $pembelian->load(['detailPembelian' => function ($query) {
-                $query->whereRaw('jumlah > jumlah_diterima');
+                $query->whereRaw('jumlah > jumlah_diterima')->with('produk');
             }]);
 
             // $pembelian->detailPembelian sekarang hanya berisi item yang belum diterima sepenuhnya.
-            // 2. Eager load 'produk' untuk detailPembelian yang sudah terfilter tersebut.
-            if ($pembelian->detailPembelian->isNotEmpty()) {
-                $pembelian->detailPembelian->load('produk'); // Load produk untuk koleksi detailPembelian
-            }
-
-            // Cek apakah setelah filtering masih ada detail pembelian yang valid
             if ($pembelian->detailPembelian->isNotEmpty()) {
                 $selectedPembelian = $pembelian;
                 $tipe_penerimaan = 'PO';
-
                 foreach ($pembelian->detailPembelian as $detail) {
                     // $detail sekarang adalah item dari detailPembelian yang jumlah > jumlah_diterima
                     // dan relasi produk-nya sudah dimuat.
@@ -222,29 +215,40 @@ class PenerimaanController extends Controller
                     }
                 }
 
+                // ================================================================
+                // === BLOK VALIDASI & LOG NOMOR SERI  ===
+                // ================================================================
                 if ($produk->memiliki_serial && isset($itemData['nomor_seri']) && is_array($itemData['nomor_seri'])) {
                     foreach ($itemData['nomor_seri'] as $noSeri) {
-                        if (!empty(trim($noSeri))) {
-                            $existingSerial = LogNomorSeri::where('id_produk', $produk->id)
-                                                          ->where('nomor_seri', trim($noSeri))
-                                                          ->first();
-                            if ($existingSerial && !in_array($existingSerial->status_log, ['DIRETUR_SUPPLIER', 'HILANG'])) {
-                                DB::rollBack();
-                                return redirect()->back()
-                                    ->with('error', "Nomor Seri '{$noSeri}' untuk produk '{$produk->nama}' sudah ada di sistem dengan status '{$existingSerial->status_log}'.")
-                                    ->withInput();
-                            }
+                        $trimmedSn = trim($noSeri);
+                        if (empty($trimmedSn)) { continue; }
 
-                            LogNomorSeri::create([
-                                'id_produk' => $stokBarang->id_produk,
-                                'id_stok_barang_asal' => $stokBarang->id,
-                                'nomor_seri' => trim($noSeri),
-                                'status_log' => 'DITERIMA',
-                                'tanggal_status' => $diterimaAt,
-                            ]);
+                        // 1. Validasi baru: Cek status TERAKHIR dari nomor seri ini
+                        $logTerakhir = LogNomorSeri::where('nomor_seri', $trimmedSn)->latest('tanggal_status')->first();
+
+                        // 2. Daftar status yang menandakan barang masih "aktif" di dalam sistem
+                        $statusAktif = ['DITERIMA', 'TERJUAL', 'DIRETUR_PELANGGAN', 'MASUK_STOK_RUSAK', 'KEMBALI_KE_STOK_BAIK_ADMIN'];
+
+                        if ($logTerakhir && in_array($logTerakhir->status_log, $statusAktif)) {
+                            throw new \Exception("Nomor Seri '{$trimmedSn}' sudah ada di sistem dengan status aktif '{$logTerakhir->status_log}'. Tidak bisa diterima lagi kecuali statusnya HILANG atau DIRETUR_SUPPLIER.");
                         }
+
+                        // 3. Buat Log BARU dengan status 'DITERIMA'
+                        LogNomorSeri::create([
+                            'id_produk' => $stokBarang->id_produk,
+                            'id_stok_barang_asal' => $stokBarang->id,
+                            'nomor_seri' => $trimmedSn,
+                            'status_log' => 'DITERIMA',
+                            'tanggal_status' => $diterimaAt,
+                            'id_referensi' => $idDetailPembelian,
+                            'tipe_referensi' => DetailPembelian::class,
+                            'catatan' => 'Diterima dari supplier.',
+                        ]);
                     }
                 }
+                // ================================================================
+                // === BLOK PENANGANAN NOMOR SERI SELESAI ===
+                // ================================================================
             }
 
             if (!$adaItemDiterima) {

@@ -67,4 +67,17 @@ class Penjualan extends Model
     {
         return $this->hasMany(StokBarang::class, 'id_penjualan_alokasi');
     }
+
+    public function retur()
+{
+    // Mengambil semua ReturPenjualan melalui tabel DetailPenjualan
+    return $this->hasManyThrough(
+        ReturPenjualan::class,
+        DetailPenjualan::class,
+        'id_penjualan', // Foreign key di tabel DetailPenjualan
+        'id_detail_penjualan', // Foreign key di tabel ReturPenjualan
+        'id', // Local key di tabel Penjualan
+        'id'  // Local key di tabel DetailPenjualan
+    );
+}
 }

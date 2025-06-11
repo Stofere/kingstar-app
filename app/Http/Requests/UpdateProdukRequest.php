@@ -44,6 +44,7 @@ class UpdateProdukRequest extends FormRequest
             'satuan' => 'required|string|max:50',
             'memiliki_serial' => 'required|in:0,1',
             'durasi_garansi_standar_bulan' => 'nullable|integer|min:0',
+            'stok_minimum' => 'nullable|integer|min:0',
             'status' => 'required|in:0,1',
         ];
     }
@@ -63,6 +64,7 @@ class UpdateProdukRequest extends FormRequest
             'harga_jual_standart' => 'Harga Jual Standar',
             'memiliki_serial' => 'Memiliki Nomor Seri',
             'durasi_garansi_standar_bulan' => 'Durasi Garansi Standar',
+            'stok_minimum' => 'Stok Minimum',
             'status' => 'Status Produk',
         ];
     }
