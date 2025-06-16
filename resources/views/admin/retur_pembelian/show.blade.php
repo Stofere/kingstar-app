@@ -73,6 +73,49 @@
             </div>
             @endif
 
+            @php
+                // Cek apakah PO pengganti sudah pernah dibuat dengan mencari di catatan
+                $poPenggantiId = null;
+                if ($returPembelian->catatan_internal_retur && str_starts_with($returPembelian->catatan_internal_retur, 'replacement_po_id:')) {
+                    $poPenggantiId = explode(':', $returPembelian->catatan_internal_retur)[1];
+                }
+                $poPengganti = $poPenggantiId ? \App\Models\Pembelian::find($poPenggantiId) : null;
+            @endphp
+
+            {{-- REVISI TOTAL BLOK INI --}}
+            @if ($returPembelian->tindakan_lanjut_supplier === 'PROSES_PENGGANTIAN_BARANG' && !$poPengganti)
+                <hr>
+                <div class="alert alert-info">
+                    <h5 class="alert-heading">Tindak Lanjut</h5>
+                    <p>Status retur ini adalah menunggu barang pengganti dari supplier. Jika Anda sudah mendapat konfirmasi bahwa barang akan dikirim, lanjutkan untuk membuat Purchase Order (PO) barang pengganti.</p>
+
+                    {{-- Tombol sekarang menjadi link cerdas, bukan form submit --}}
+                    <a href="{{ route('admin.pembelian.create', [
+                            'from_retur' => $returPembelian->id,
+                            'supplier' => $returPembelian->stokBarang->id_supplier,
+                            'produk' => $returPembelian->stokBarang->id_produk,
+                            'qty' => $returPembelian->jumlah_retur,
+                            'nomor_retur' => $returPembelian->nomor_retur
+                        ]) }}" class="btn btn-success">
+                        <i class="bi bi-file-earmark-plus-fill me-1"></i> Buat PO Barang Pengganti
+                    </a>
+                </div>
+            @elseif ($poPengganti)
+                <hr>
+                <div class="alert alert-success">
+                    <h5 class="alert-heading">PO Barang Pengganti Telah Dibuat</h5>
+                    <p class="mb-0">
+                        PO untuk barang pengganti sudah dibuat dengan nomor:
+                        <strong>
+                            <a href="{{ route('admin.pembelian.show', $poPengganti->id) }}" target="_blank">
+                                {{ $poPengganti->nomor_pembelian }}
+                            </a>
+                        </strong>.
+                        Silakan tunggu konfirmasi dari bagian gudang saat barang tiba.
+                    </p>
+                </div>
+            @endif
+
         </div>
     </div>
 </div>

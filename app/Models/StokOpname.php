@@ -11,47 +11,48 @@ class StokOpname extends Model
 
     protected $table = 'stok_opname';
 
-    // Nonaktifkan timestamps default Laravel karena ada started_at/finished_at
+    // Izinkan semua field untuk diisi, atau sesuaikan dengan kebutuhan
+    protected $guarded = ['id'];
+    
+    // Matikan timestamp default Laravel jika Anda menggunakan started_at/finished_at
     public $timestamps = false;
 
-    protected $fillable = [
-        'tanggal_opname',
-        'lokasi',
-        'id_pengguna_mulai',
-        'id_pengguna_selesai',
-        'status',
-        'catatan',
-        'started_at',
-        'finished_at',
-    ];
-
+    // Casting tipe data agar lebih mudah diolah
     protected $casts = [
         'tanggal_opname' => 'date',
-        'started_at' => 'timestamp',
-        'finished_at' => 'timestamp',
+        'started_at' => 'datetime',
+        'finished_at' => 'datetime',
     ];
 
-    // Relasi: StokOpname belongs to Pengguna (yang memulai)
+    // =====================================================================
+    // ## TAMBAHKAN FUNGSI-FUNGSI RELASI INI                          ##
+    // =====================================================================
+    
+    /**
+     * Relasi ke Pengguna yang memulai sesi opname.
+     */
     public function penggunaMulai()
     {
         return $this->belongsTo(Pengguna::class, 'id_pengguna_mulai');
     }
 
-    // Relasi: StokOpname belongs to Pengguna (yang menyelesaikan)
+    /**
+     * Relasi ke Pengguna yang menyelesaikan sesi opname.
+     */
     public function penggunaSelesai()
     {
         return $this->belongsTo(Pengguna::class, 'id_pengguna_selesai');
     }
 
-    // Relasi: StokOpname has many DetailStokOpname
+    /**
+     * Relasi ke detail-detail item opname.
+     */
     public function detailStokOpname()
     {
         return $this->hasMany(DetailStokOpname::class, 'id_stok_opname');
     }
 
-    // Relasi: StokOpname bisa menghasilkan banyak PenyesuaianStok
-    public function penyesuaianStok()
-    {
-        return $this->hasMany(PenyesuaianStok::class, 'id_stok_opname');
-    }
+    // =====================================================================
+    // ## AKHIR PENAMBAHAN                                              ##
+    // =====================================================================
 }

@@ -149,8 +149,18 @@
                                     <ul class="dropdown-menu">
                                         <li><a class="dropdown-item {{ request()->routeIs('admin.laporan.penjualan.*') ? 'active' : '' }}" href="{{ route('admin.laporan.penjualan.index') }}">Penjualan</a></li>
                                         <li><a class="dropdown-item {{ request()->routeIs('admin.laporan.pembelian.*') ? 'active' : '' }}" href="{{ route('admin.laporan.pembelian.index') }}">Pembelian</a></li>
-                                        <li><a class="dropdown-item {{ request()->routeIs('admin.laporan.stok.*') ? 'active' : '' }}" href="{{ route('admin.laporan.stok.ringkasan_produk') }}">Laporan Stok</a></li>
+                                        <li><a class="dropdown-item {{ request()->routeIs('admin.laporan.stok.*') ? 'active' : '' }}" href="{{ route('admin.laporan.stok.ringkasan_produk') }}">Stok</a></li>
                                     </ul>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link {{ request()->routeIs('gudang.stok-opname.*') ? 'active' : '' }}" href="{{ route('gudang.stok-opname.index') }}">
+                                        <i class="bi bi-clipboard-data"></i> Stok Opname
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link {{ request()->routeIs('perpindahan_stok.*') ? 'active' : '' }}" href="{{ route('perpindahan-stok.index') }}">
+                                        <i class="bi bi-truck"></i> Perpindahan Stok
+                                    </a>
                                 </li>
 
                             @elseif(Auth::user()->role == 'KASIR')
@@ -163,8 +173,16 @@
                             @elseif(Auth::user()->role == 'GUDANG')
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('gudang.dashboard') ? 'active' : '' }}" href="{{ route('gudang.dashboard') }}"><i class="bi bi-speedometer2 me-1"></i> Dashboard</a></li>
                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('gudang.penerimaan.*') ? 'active' : '' }}" href="{{ route('gudang.penerimaan.index') }}"><i class="bi bi-box-arrow-in-down me-1"></i> Penerimaan Barang</a></li>
-                                {{-- <li class="nav-item"><a class="nav-link" href="#"><i class="bi bi-boxes me-1"></i> Lihat Stok</a></li> --}}
-                                {{-- <li class="nav-item"><a class="nav-link" href="#"><i class="bi bi-clipboard-check me-1"></i> Stok Opname</a></li> --}}
+                                <li class="nav-item">
+                                    <a class="nav-link {{ request()->routeIs('gudang.stok-opname.*') ? 'active' : '' }}" href="{{ route('gudang.stok-opname.index') }}">
+                                        <i class="bi bi-clipboard-data"></i> Stok Opname
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link {{ request()->routeIs('perpindahan_stok.*') ? 'active' : '' }}" href="{{ route('perpindahan-stok.index') }}">
+                                        <i class="bi bi-truck"></i> Perpindahan Stok
+                                    </a>
+                                </li>
                             @endif
                         @endauth
                     </ul>

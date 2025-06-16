@@ -13,6 +13,7 @@ use App\Models\Pelanggan;
 use App\Models\Produk;
 use App\Models\StokBarang;
 use App\Models\LogNomorSeri;
+use App\Models\RiwayatPergerakanStok;
 use App\Models\Penjualan;
 use App\Models\DetailPenjualan;
 // Pastikan model DetailPenjualanStokAlokasi ada jika Anda menggunakannya,
@@ -166,15 +167,32 @@ class PenjualanController extends Controller
 
         $idStokBarang = $request->input('id_stok_barang');
 
-        $serials = LogNomorSeri::where('id_stok_barang_asal', $idStokBarang)
-                                ->where('status_log', 'DITERIMA')
-                                ->pluck('nomor_seri')
-                                ->toArray();
+        // Langkah 1: Ambil SEMUA nomor seri yang ASLI berasal dari batch ini.
+        $semuaSerialAsalBatch = LogNomorSeri::where('id_stok_barang_asal', $idStokBarang)
+            ->where('status_log', 'DITERIMA')
+            ->pluck('nomor_seri');
+
+        if ($semuaSerialAsalBatch->isEmpty()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tidak ada nomor seri yang tercatat untuk batch ini.',
+                'serials' => []
+            ]);
+        }
+
+        // Langkah 2: Dari daftar di atas, cari tahu mana yang statusnya sudah TIDAK TERSEDIA lagi.
+        $serialTidakTersedia = LogNomorSeri::whereIn('nomor_seri', $semuaSerialAsalBatch)
+            ->whereIn('status_log', ['TERJUAL', 'DIRETUR_PELANGGAN', 'DIRETUR_SUPPLIER', 'RUSAK']) // Status final
+            ->pluck('nomor_seri')
+            ->unique();
+
+        // Langkah 3: Kurangi daftar semua serial dengan yang tidak tersedia untuk mendapatkan yang valid.
+        $serials = $semuaSerialAsalBatch->diff($serialTidakTersedia)->values()->all();
 
         if (empty($serials)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Tidak ada nomor seri yang tersedia untuk batch ini atau semua sudah teralokasi.',
+                'message' => 'Semua nomor seri untuk batch ini sudah teralokasi atau tidak tersedia.',
                 'serials' => []
             ]);
         }
@@ -323,6 +341,54 @@ class PenjualanController extends Controller
                             $allSerialsForItem[] = $trimmedSn;
                         }
                     }
+                    // =====================================================================
+                    // ## PENCATATAN BARU KE RIWAYAT PERGERAKAN STOK (SISIPKAN DI SINI) ##
+                    // =====================================================================
+                    $keteranganRiwayat = 'Terjual ke ' . ($penjualan->pelanggan->nama ?? 'Pelanggan Umum');
+
+                    if ($produk->memiliki_serial && !empty($alloc['serials_selected'])) {
+                        // Jika berserial, buat satu baris riwayat untuk setiap nomor seri
+                        foreach ($alloc['serials_selected'] as $sn) {
+                            $saldoTerakhir = RiwayatPergerakanStok::where('id_produk', $produk->id)->lockForUpdate()->latest('id')->first();
+                            $saldoSebelumnya = $saldoTerakhir->saldo_setelah_transaksi ?? 0;
+                            
+                            RiwayatPergerakanStok::create([
+                                'id_produk' => $produk->id,
+                                'id_stok_barang_terkait' => $stokBarang->id,
+                                'nomor_seri' => trim($sn),
+                                'tipe_transaksi' => 'PENJUALAN',
+                                'jumlah_masuk' => 0,
+                                'jumlah_keluar' => 1,
+                                'saldo_setelah_transaksi' => $saldoSebelumnya - 1,
+                                'id_referensi' => $detailPenjualan->id,
+                                'tipe_referensi' => DetailPenjualan::class,
+                                'tanggal_transaksi' => $tanggalPenjualan,
+                                'keterangan' => $keteranganRiwayat,
+                                'id_pengguna' => Auth::id(),
+                            ]);
+                        }
+                    } else {
+                        // Jika tidak berserial, buat satu baris riwayat untuk total jumlah
+                        $saldoTerakhir = RiwayatPergerakanStok::where('id_produk', $produk->id)->lockForUpdate()->latest('id')->first();
+                        $saldoSebelumnya = $saldoTerakhir->saldo_setelah_transaksi ?? 0;
+
+                        RiwayatPergerakanStok::create([
+                            'id_produk' => $produk->id,
+                            'id_stok_barang_terkait' => $stokBarang->id,
+                            'tipe_transaksi' => 'PENJUALAN',
+                            'jumlah_masuk' => 0,
+                            'jumlah_keluar' => $alloc['qty_allocated'],
+                            'saldo_setelah_transaksi' => $saldoSebelumnya - $alloc['qty_allocated'],
+                            'id_referensi' => $detailPenjualan->id,
+                            'tipe_referensi' => DetailPenjualan::class,
+                            'tanggal_transaksi' => $tanggalPenjualan,
+                            'keterangan' => $keteranganRiwayat,
+                            'id_pengguna' => Auth::id(),
+                        ]);
+                    }
+                    // =====================================================================
+                    // ## AKHIR PENCATATAN BARU                                         ##
+                    // =====================================================================
                 } // End loop alokasi batch
 
                     // Update DetailPenjualan dengan info gabungan untuk transaksi BIASA

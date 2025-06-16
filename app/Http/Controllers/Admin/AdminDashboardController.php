@@ -3,34 +3,97 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Produk; // Import model Produk
-use App\Models\StokBarang; // Mungkin diperlukan jika ingin query lebih kompleks
-use Illuminate\Support\Facades\DB; // Untuk DB::raw jika diperlukan
+use App\Models\Penjualan;
+use App\Models\Produk;
+use App\Models\StokBarang;
+use App\Models\DetailPenjualanStokAlokasi;
+use App\Models\Pembelian; 
+use Illuminate\Http\Request;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB; 
 
 class AdminDashboardController extends Controller
 {
     public function index()
     {
-        // Mengambil produk yang statusnya aktif dan memiliki stok_minimum > 0
-        $produks = Produk::where('status', true)
-            ->where('stok_minimum', '>', 0) // Hanya produk yang punya setting stok minimum
-            ->withCount(['stokBarang as total_stok_fisik' => function ($query) {
-                $query->select(DB::raw('COALESCE(SUM(jumlah), 0)')) // Total stok fisik di semua batch
-                      ->where('jumlah', '>', 0); // Hanya yang masih ada stoknya
-            }])
+        // --- Ringkasan Penjualan Hari Ini ---
+        $today = Carbon::today();
+        $penjualanHariIni = Penjualan::whereDate('tanggal_penjualan', $today)
+                                     ->where('status_penjualan', 'SELESAI'); // Hanya yang selesai
+
+        $jumlahTransaksiHariIni = $penjualanHariIni->count();
+        $totalOmzetHariIni = (clone $penjualanHariIni)->sum('total_harga'); // Clone agar count tidak terpengaruh
+
+        // --- Grafik Penjualan 7 Hari Terakhir (Sederhana - Data untuk Chart.js) ---
+        $penjualanMingguanLabels = [];
+        $penjualanMingguanData = [];
+        for ($i = 6; $i >= 0; $i--) {
+            $tanggal = Carbon::today()->subDays($i);
+            $penjualanMingguanLabels[] = $tanggal->isoFormat('ddd, D MMM'); // Format: Sen, 1 Jan
+            $totalHarian = Penjualan::whereDate('tanggal_penjualan', $tanggal)
+                                    ->where('status_penjualan', 'SELESAI')
+                                    ->sum('total_harga');
+            $penjualanMingguanData[] = $totalHarian ?: 0;
+        }
+
+        // --- Ringkasan Stok Kritis ---
+        $produkStokKritis = collect(); // Inisialisasi collection kosong
+        $jumlahProdukStokKritis = 0;
+
+        // Ambil semua produk aktif yang punya setting stok_minimum > 0 atau yang stoknya sudah 0
+        $semuaProdukAktif = Produk::where('status', true)
+            ->withCount([
+                'stokBarang as total_stok_fisik' => function ($query) {
+                    $query->select(DB::raw('COALESCE(SUM(jumlah), 0)'))
+                          ->where('jumlah', '>', 0);
+                }
+            ])
             ->get();
 
-        // Filter produk yang stok fisiknya <= stok minimumnya
-        $produkStokRendah = $produks->filter(function ($produk) {
-            $stokFisik = $produk->total_stok_fisik ?: 0; // Ambil hasil withCount
-            // Stok dianggap rendah jika stok fisik lebih kecil atau sama dengan stok minimum
-            // dan stok minimumnya memang diset (sudah difilter di query awal)
-            return $stokFisik <= $produk->stok_minimum;
-        });
+        $itemsStokKritisUntukTampil = [];
+        foreach ($semuaProdukAktif as $produk) {
+            $totalDipesan = DetailPenjualanStokAlokasi::where('tipe_alokasi', 'DIALOKASIKAN_PESANAN')
+                ->whereHas('detailPenjualan', function($qDetail) use ($produk) {
+                    $qDetail->where('id_produk', $produk->id)
+                            ->whereHas('penjualan', function($qPenjualan){
+                                $qPenjualan->whereIn('status_penjualan', ['MENUNGGU_BARANG', 'MENUNGGU_PELUNASAN', 'SIAP_DIAMBIL']);
+                            });
+                })
+                ->sum('jumlah_diambil');
 
-        // Anda juga bisa mengambil data lain untuk dashboard di sini jika perlu
-        // Misalnya: total penjualan hari ini, total pembelian bulan ini, dll.
+            $stokFisik = $produk->total_stok_fisik ?: 0;
+            $stokEfektif = $stokFisik - ($totalDipesan ?: 0);
+            $stokMinimum = $produk->stok_minimum ?: 0;
 
-        return view('admin.dashboard', compact('produkStokRendah'));
+            if (($stokMinimum > 0 && $stokEfektif <= $stokMinimum) || $stokEfektif <= 0) {
+                $jumlahProdukStokKritis++;
+                if (count($itemsStokKritisUntukTampil) < 5) { // Tampilkan maks 5 item
+                    $itemsStokKritisUntukTampil[] = (object)[
+                        'nama' => $produk->nama,
+                        'kode_produk' => $produk->kode_produk,
+                        'stok_efektif' => $stokEfektif,
+                        'satuan' => $produk->satuan,
+                        'stok_minimum' => $stokMinimum,
+                        'id' => $produk->id // Untuk link ke detail batch
+                    ];
+                }
+            }
+        }
+        $produkStokKritis = collect($itemsStokKritisUntukTampil);
+
+
+        // --- Ringkasan Pembelian Aktif (Contoh) ---
+        $jumlahPoAktif = Pembelian::whereIn('status_pembelian', ['DIPESAN', 'PENGIRIMAN', 'TIBA_SEBAGIAN'])
+                                  ->count();
+
+        return view('admin.dashboard', compact(
+            'jumlahTransaksiHariIni',
+            'totalOmzetHariIni',
+            'penjualanMingguanLabels',
+            'penjualanMingguanData',
+            'jumlahProdukStokKritis',
+            'produkStokKritis', // Ini adalah collection dari objek
+            'jumlahPoAktif'
+        ));
     }
 }

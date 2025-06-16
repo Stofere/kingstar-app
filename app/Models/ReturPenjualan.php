@@ -57,4 +57,18 @@ class ReturPenjualan extends Model
             $this->attributes['nomor_seri_diretur'] = null;
         }
     }
+
+
+    // Relasi tidak langsung (nested relationship) untuk mendapatkan produk dari retur ini.
+    public function produk()
+    {
+        return $this->hasOneThrough(
+            Produk::class,
+            DetailPenjualan::class,
+            'id', // Foreign key on DetailPenjualan table...
+            'id', // Foreign key on Produk table...
+            'id_detail_penjualan', // Local key on ReturPenjualan table...
+            'id_produk' // Local key on DetailPenjualan table...
+        );
+    }
 }

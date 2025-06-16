@@ -93,9 +93,17 @@ class StokBarang extends Model
         return $this->hasMany(LogNomorSeri::class, 'id_stok_barang_asal');
     }
 
-    public function detailPenjualanAllocations()
+    // Ganti nama ini agar lebih jelas, ini adalah PIVOT table
+    public function alokasiPenjualan()
     {
         return $this->hasMany(DetailPenjualanStokAlokasi::class, 'id_stok_barang');
+    }
+
+    // Relasi: Satu batch StokBarang bisa memiliki banyak log nomor seri (saat diterima)
+    public function logNomorSeriAsal()
+    {
+        // Lebih baik beri nama yang spesifik untuk menghindari kebingungan
+        return $this->hasMany(LogNomorSeri::class, 'id_stok_barang_asal');
     }
 
     // Relasi many-to-many ke DetailPenjualan melalui tabel junction

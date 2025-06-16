@@ -18,7 +18,7 @@ class StorePenerimaanRequest extends FormRequest
     public function rules()
     {
         $rules = [
-            'tipe_penerimaan' => ['required', Rule::in(['PO', 'MANUAL'])],
+            'tipe_penerimaan' => ['required', Rule::in(['PO', 'MANUAL', 'RETUR'])],
             'id_pembelian' => [
                 Rule::requiredIf(fn () => $this->input('tipe_penerimaan') === 'PO'),
                 'nullable',

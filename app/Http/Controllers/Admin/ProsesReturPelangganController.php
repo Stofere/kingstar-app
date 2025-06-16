@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ReturPenjualan;
+use App\Models\RiwayatPergerakanStok;
 use App\Models\StokBarang;
 use App\Models\LogNomorSeri;
 use App\Models\Produk; // Untuk mengambil info produk
@@ -96,81 +97,91 @@ class ProsesReturPelangganController extends Controller
      */
     public function storeTindakanAdmin(Request $request, ReturPenjualan $returPenjualan)
     {
-        Log::channel('returlog')->info("ADMIN storeTindakanAdmin untuk ReturPenjualan ID: {$returPenjualan->id}", $request->all());
+        // Validasi Proses Ganda
+        $statusAwalKasir = ['DITERIMA_KEMBALI_PERLU_CEK'];
+        if (!in_array($returPenjualan->tindakan_lanjut, $statusAwalKasir)) {
+            return back()->with('error', 'Retur ini sudah pernah diproses oleh Admin sebelumnya.');
+        }
 
         $validated = $request->validate([
-            'tindakan_admin' => 'required|string',
+            'tindakan_admin' => ['required', 'string', Rule::in([
+                'KEMBALI_KE_STOK_BAIK',
+                'KEMBALI_KE_STOK_RUSAK',
+                'AKAN_DIRETUR_KE_SUPPLIER'
+            ])],
             'catatan_admin_proses' => 'nullable|string',
-            'harga_beli_batch_retur' => ['nullable', Rule::requiredIf($request->tindakan_admin === 'KEMBALI_KE_STOK_BAIK_ADMIN'), 'numeric', 'min:0'],
-            'lokasi_stok_retur' => ['nullable', Rule::requiredIf($request->tindakan_admin === 'KEMBALI_KE_STOK_BAIK_ADMIN'), 'string'],
-            'tipe_garansi_retur' => ['nullable', Rule::requiredIf($request->tindakan_admin === 'KEMBALI_KE_STOK_BAIK_ADMIN'), 'string'],
         ]);
         
         DB::beginTransaction();
         try {
-            $catatanAdmin = "[Admin Proses: " . Carbon::now()->isoFormat('D MMM YY HH:mm') . "] ";
-            $catatanAdmin .= $validated['catatan_admin_proses'] ?? '';
-
+            // 1. Update Nota Retur Penjualan
             $returPenjualan->tindakan_lanjut = $validated['tindakan_admin'];
-            $returPenjualan->catatan_internal_retur = trim($catatanAdmin);
+            $returPenjualan->catatan_internal_retur = $validated['catatan_admin_proses'];
             $returPenjualan->save();
 
-            $tindakanUntukBuatStokKarantina = ['CATAT_SEBAGAI_STOK_RUSAK_FINAL', 'AKAN_DIRETUR_KE_SUPPLIER', 'DITERIMA_LANGSUNG_RUSAK'];
+            $detailPenjualanAsal = $returPenjualan->detailPenjualan()->with('produk', 'penjualan.pelanggan')->firstOrFail();
+            $produk = $detailPenjualanAsal->produk;
             
-            $returPenjualan->load(['detailPenjualan.produk', 'detailPenjualan.stokAlokasi.stokBarang']);
-            $detailPenjualanAsal = $returPenjualan->detailPenjualan;
-            $stokAsal = $detailPenjualanAsal->stokAlokasi->first()->stokBarang ?? null;
-
-            $stokBaru = null; // Variabel untuk menampung stok baru yang dibuat
-
-            if (in_array($validated['tindakan_admin'], $tindakanUntukBuatStokKarantina)) {
-                Log::channel('returlog')->info("   Tindakan Admin: {$validated['tindakan_admin']}. Memulai pembuatan stok KARANTINA/RUSAK.");
-                $stokBaru = StokBarang::create([
-                    'id_produk' => $detailPenjualanAsal->id_produk, 'harga_beli' => $stokAsal->harga_beli ?? 0, 'jumlah' => $returPenjualan->jumlah_retur, 'diterima_at' => Carbon::now(), 'kondisi' => 'RUSAK', 'lokasi' => 'GUDANG_RETUR', 'id_supplier' => $stokAsal->id_supplier ?? null, 'tipe_garansi' => $stokAsal->tipe_garansi ?? 'NONE', 'tipe_stok' => $stokAsal->tipe_stok ?? 'REGULER',
-                ]);
-                Log::channel('returlog')->info("   StokBarang KONDISI RUSAK berhasil dibuat. ID Stok Baru: {$stokBaru->id}");
+            // =====================================================================
+            // ## FIX: Logika diubah agar SELALU mencatat stok masuk dari pelanggan ##
+            // =====================================================================
             
-            } elseif ($validated['tindakan_admin'] === 'KEMBALI_KE_STOK_BAIK_ADMIN') {
-                Log::channel('returlog')->info("   Tindakan Admin: KEMBALI_KE_STOK_BAIK_ADMIN. Memulai pembuatan stok BAIK.");
-                $stokBaru = StokBarang::create([
-                    'id_produk' => $detailPenjualanAsal->id_produk, 'harga_beli' => $validated['harga_beli_batch_retur'], 'jumlah' => $returPenjualan->jumlah_retur, 'diterima_at' => Carbon::now(), 'kondisi' => 'BAIK', 'lokasi' => $validated['lokasi_stok_retur'], 'id_supplier' => $stokAsal->id_supplier ?? null, 'tipe_garansi' => $validated['tipe_garansi_retur'], 'tipe_stok' => $stokAsal->tipe_stok ?? 'REGULER',
-                ]);
-                Log::channel('returlog')->info("   StokBarang KONDISI BAIK berhasil dibuat. ID Stok Baru: {$stokBaru->id}");
+            // Tentukan kondisi dan lokasi berdasarkan keputusan Admin
+            $kondisiStokBaru = 'RUSAK'; // Default untuk 'AKAN_DIRETUR_KE_SUPPLIER'
+            $lokasiStokBaru = 'GUDANG_RETUR';
+            if ($validated['tindakan_admin'] === 'KEMBALI_KE_STOK_BAIK') {
+                $kondisiStokBaru = 'BAIK';
+                $lokasiStokBaru = 'TOKO'; // atau GUDANG, tergantung kebijakan
             }
 
-            // LOGIKA BARU: UPDATE LOG SERIAL SETELAH STOK BARU DIBUAT (JIKA DIBUAT)
-            if ($stokBaru && $detailPenjualanAsal->produk->memiliki_serial && !empty($returPenjualan->nomor_seri_diretur)) {
-                $nomorSeriArray = explode(',', str_replace(' ', '', $returPenjualan->nomor_seri_diretur));
-                foreach ($nomorSeriArray as $sn) {
-                    // CARI log yang sudah diubah oleh kasir
-                    $logSerial = LogNomorSeri::where('nomor_seri', $sn)
-                        ->where('status_log', 'DIRETUR_PELANGGAN')
-                        ->where('tipe_referensi', ReturPenjualan::class)
-                        ->where('id_referensi', $returPenjualan->id)
-                        ->first();
-
-                    if ($logSerial) {
-                        $updateData = [
-                            'id_stok_barang_asal' => $stokBaru->id, // Tautkan ke batch stok baru
-                            'catatan' => $logSerial->catatan . "\nDiproses Admin ke Stok ID: {$stokBaru->id}."
-                        ];
-                        // Jika kembali ke stok baik, ubah statusnya jadi DITERIMA lagi
-                        if ($stokBaru->kondisi === 'BAIK') {
-                            $updateData['status_log'] = 'DITERIMA';
-                        }
-                        $logSerial->update($updateData);
-                        Log::channel('returlog')->info("   LogNomorSeri untuk SN: {$sn} berhasil di-UPDATE, ditautkan ke Stok ID {$stokBaru->id}.");
-                    }
+            // 2. Buat batch stok baru untuk menampung barang retur
+            $stokBaru = StokBarang::create([
+                'id_produk' => $produk->id,
+                'jumlah' => $returPenjualan->jumlah_retur,
+                'id_supplier' => $detailPenjualanAsal->stokAlokasi->first()->stokBarang->id_supplier ?? null, // Ambil supplier dari batch asal penjualan
+                'diterima_at' => now(),
+                'kondisi' => $kondisiStokBaru,
+                'lokasi' => $lokasiStokBaru,
+                'harga_beli' => 0,
+            ]);
+            
+            // 3. Catat ke Riwayat Pergerakan Stok
+            $keteranganRiwayat = 'Retur dari Pelanggan (' . ($detailPenjualanAsal->penjualan->pelanggan->nama ?? 'Umum') . '). Tindakan: ' . str_replace('_', ' ', $validated['tindakan_admin']);
+            
+            if ($produk->memiliki_serial && !empty($returPenjualan->nomor_seri_diretur)) {
+                $serials = explode(',', str_replace(' ', '', $returPenjualan->nomor_seri_diretur));
+                foreach ($serials as $sn) {
+                    $saldoTerakhir = RiwayatPergerakanStok::where('id_produk', $produk->id)->lockForUpdate()->latest('id')->first();
+                    $saldoSebelumnya = $saldoTerakhir->saldo_setelah_transaksi ?? 0;
+                    RiwayatPergerakanStok::create([
+                        'id_produk' => $produk->id, 'id_stok_barang_terkait' => $stokBaru->id,
+                        'nomor_seri' => trim($sn), 'tipe_transaksi' => 'RETUR_PELANGGAN',
+                        'jumlah_masuk' => 1, 'jumlah_keluar' => 0,
+                        'saldo_setelah_transaksi' => $saldoSebelumnya + 1,
+                        'id_referensi' => $returPenjualan->id, 'tipe_referensi' => ReturPenjualan::class,
+                        'tanggal_transaksi' => now(), 'keterangan' => $keteranganRiwayat,
+                        'id_pengguna' => Auth::id(),
+                    ]);
                 }
+            } else { // Untuk produk non-serial
+                $saldoTerakhir = RiwayatPergerakanStok::where('id_produk', $produk->id)->lockForUpdate()->latest('id')->first();
+                $saldoSebelumnya = $saldoTerakhir->saldo_setelah_transaksi ?? 0;
+                RiwayatPergerakanStok::create([
+                    'id_produk' => $produk->id, 'id_stok_barang_terkait' => $stokBaru->id,
+                    'tipe_transaksi' => 'RETUR_PELANGGAN', 'jumlah_masuk' => $returPenjualan->jumlah_retur,
+                    'jumlah_keluar' => 0,
+                    'saldo_setelah_transaksi' => $saldoSebelumnya + $returPenjualan->jumlah_retur,
+                    'id_referensi' => $returPenjualan->id, 'tipe_referensi' => ReturPenjualan::class,
+                    'tanggal_transaksi' => now(), 'keterangan' => $keteranganRiwayat,
+                    'id_pengguna' => Auth::id(),
+                ]);
             }
-
+            
             DB::commit();
-            Log::channel('returlog')->info("ADMIN storeTindakanAdmin - DB Transaction Committed.");
             return redirect()->route('admin.proses_retur_pelanggan.index')->with('success', "Tindakan untuk retur No. {$returPenjualan->nomor_retur} berhasil disimpan.");
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error("GAGAL storeTindakanAdmin: " . $e->getMessage() . " di baris " . $e->getLine() . " - " . $e->getFile());
             return redirect()->back()->with('error', 'Terjadi kesalahan fatal: ' . $e->getMessage());
         }
     }

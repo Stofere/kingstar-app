@@ -10,7 +10,8 @@ use App\Models\DetailPembelian;
 use App\Models\ReturPenjualan;
 use App\Models\ReturPembelian;
 use App\Models\PenyesuaianStok;
-// use App\Models\Penjualan; // Tidak secara langsung, tapi via relasi
+use App\Models\RiwayatPergerakanStok;
+use App\Models\DetailPenjualan;
 use App\Models\LogNomorSeri;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -103,6 +104,7 @@ class LaporanStokController extends Controller
 
     public function detailBatchProduk(Request $request, Produk $produk)
     {
+        // Query utama tidak perlu diubah
         $query = StokBarang::where('id_produk', $produk->id)
                             ->where('jumlah', '>', 0)
                             ->with(['supplier']) 
@@ -113,50 +115,57 @@ class LaporanStokController extends Controller
                 ->addIndexColumn()
                 ->addColumn('id_batch', fn($batch) => $batch->id)
                 ->addColumn('diterima_at_formatted', fn($batch) => Carbon::parse($batch->diterima_at)->isoFormat('D MMM YY, HH:mm'))
-                ->addColumn('supplier_nama', fn($batch) => $batch->supplier->nama ?? 'Retur Pelanggan') 
-
-                ->addColumn('total_jumlah_batch', fn($batch) => $batch->jumlah . ' ' . $produk->satuan)
                 
-                ->addColumn('sudah_dipesan', function($batch) use ($produk){
-                    return '0 ' . $produk->satuan; 
+                // #FIX: Logika Sumber/Supplier dibuat lebih cerdas
+                ->addColumn('supplier_nama', function($batch) {
+                    if ($batch->supplier) {
+                        return $batch->supplier->nama;
+                    }
+                    if (in_array($batch->kondisi, ['RUSAK', 'GUDANG_RETUR'])) {
+                        return 'Retur dari Pelanggan';
+                    }
+                    return 'Penerimaan Manual';
                 })
-
+                
+                ->addColumn('total_jumlah_batch', fn($batch) => $batch->jumlah . ' ' . $produk->satuan)
+                ->addColumn('sudah_dipesan', fn($batch) => '0 ' . $produk->satuan) // Logika ini bisa disempurnakan nanti
                 ->addColumn('stok_siap_jual', function($batch) use ($produk){
                     if ($batch->kondisi === 'BAIK') {
-                        $dipesan = 0; 
-                        $siapJual = $batch->jumlah - $dipesan;
-                        return '<span class="fw-bold text-success">' . $siapJual . ' ' . $produk->satuan . '</span>';
+                        return '<span class="fw-bold text-success">' . $batch->jumlah . ' ' . $produk->satuan . '</span>';
                     }
                     return '<span class="text-muted">0 ' . $produk->satuan . '</span>';
                 })
-                
                 ->editColumn('lokasi', fn($batch) => $batch->lokasi)
                 ->editColumn('kondisi', fn($batch) => ucwords(str_replace('_', ' ', $batch->kondisi)))
+                
                 ->addColumn('nomor_seri_tersedia', function($batch) use ($produk) {
-                    if ($produk->memiliki_serial) {
-                        // Langkah 1: Ambil SEMUA nomor seri yang ASLI berasal dari batch ini.
-                        $semuaSerialAsalBatch = LogNomorSeri::where('id_stok_barang_asal', $batch->id)
-                                                        ->where('status_log', 'DITERIMA')
-                                                        ->pluck('nomor_seri');
+                if (!$produk->memiliki_serial) return '-';
 
-                        if ($semuaSerialAsalBatch->isEmpty()) {
-                            return '-';
-                        }
+                // Ambil semua nomor seri unik yang PERNAH MASUK ke batch ini.
+                $candidateSerials = RiwayatPergerakanStok::where('id_stok_barang_terkait', $batch->id)
+                    ->where('jumlah_masuk', '>', 0)
+                    ->whereNotNull('nomor_seri')
+                    ->distinct()->pluck('nomor_seri');
+                
+                if ($candidateSerials->isEmpty()) return '-';
 
-                        // Langkah 2: Cari tahu mana dari serial tersebut yang statusnya sudah TIDAK TERSEDIA lagi.
-                        $serialTidakTersedia = LogNomorSeri::whereIn('nomor_seri', $semuaSerialAsalBatch)
-                                                            ->whereIn('status_log', ['TERJUAL', 'DIRETUR_PELANGGAN', 'RUSAK_FINAL_RETUR', 'DIRETUR_SUPPLIER'])
-                                                            ->pluck('nomor_seri')
-                                                            ->unique();
-
-                        // Langkah 3: Kurangi daftar semua serial dengan yang tidak tersedia.
-                        $serialYangMasihTersedia = $semuaSerialAsalBatch->diff($serialTidakTersedia);
-                        
-                        return $serialYangMasihTersedia->implode(', ');
+                $availableSerials = [];
+                foreach ($candidateSerials as $serial) {
+                    // Untuk setiap kandidat, cari tahu di mana lokasi terakhirnya berdasarkan riwayat.
+                    $latestMovement = RiwayatPergerakanStok::where('nomor_seri', $serial)
+                        ->latest('tanggal_transaksi')->latest('id')->first();
+                    
+                    // Serial ini dianggap ada di batch ini JIKA:
+                    // Log terakhirnya menunjuk ke ID batch ini DAN
+                    // transaksinya adalah transaksi MASUK (bukan keluar).
+                    if ($latestMovement && $latestMovement->id_stok_barang_terkait == $batch->id && $latestMovement->jumlah_masuk > 0) {
+                        $availableSerials[] = $serial;
                     }
-                    return '-';
-                })
-                ->rawColumns(['stok_siap_jual']) // Pastikan kolom HTML di-render
+                }
+                
+                return !empty($availableSerials) ? implode(', ', $availableSerials) : '-';
+            })
+                ->rawColumns(['stok_siap_jual', 'nomor_seri_tersedia'])
                 ->make(true);
         }
         return view('admin.laporan.stok.detail_batch_produk', compact('produk'));
@@ -164,136 +173,105 @@ class LaporanStokController extends Controller
 
 
     public function generateKartuStok(Produk $produk, Request $request)
-    {
-        $tanggalMulai = $request->input('tanggal_mulai')
-                        ? Carbon::parse($request->input('tanggal_mulai'))->startOfDay()
-                        : Carbon::now()->startOfMonth()->startOfDay();
+{
+    $tanggalMulai = $request->input('tanggal_mulai')
+                    ? Carbon::parse($request->input('tanggal_mulai'))->startOfDay()
+                    : now()->startOfMonth()->startOfDay();
 
-        $tanggalSelesai = $request->input('tanggal_selesai')
-                        ? Carbon::parse($request->input('tanggal_selesai'))->endOfDay()
-                        : Carbon::now()->endOfDay();
+    $tanggalSelesai = $request->input('tanggal_selesai')
+                    ? Carbon::parse($request->input('tanggal_selesai'))->endOfDay()
+                    : now()->endOfDay();
+    
+    // 1. Hitung Saldo Awal
+    $saldoAwalRecord = RiwayatPergerakanStok::where('id_produk', $produk->id)
+        ->where('tanggal_transaksi', '<', $tanggalMulai)
+        ->orderBy('id', 'desc')->first();
+    $saldoAwal = $saldoAwalRecord->saldo_setelah_transaksi ?? 0;
 
-        if ($tanggalSelesai->lt($tanggalMulai)) {
-            $tanggalSelesai = $tanggalMulai->copy()->endOfDay();
-        }
+    // 2. Ambil semua data riwayat dalam periode
+    $pergerakanStok = RiwayatPergerakanStok::where('id_produk', $produk->id)
+        ->whereBetween('tanggal_transaksi', [$tanggalMulai, $tanggalSelesai])
+        ->with('pengguna') // Eager load pengguna
+        ->orderBy('id', 'asc')
+        ->get();
+    
+    // =====================================================================
+    // ## FIX: Ambil semua data referensi secara efisien di awal          ##
+    // =====================================================================
 
-        // =========================================================================
-        // 1. HITUNG SALDO AWAL (sebelum periode yang dipilih)
-        // =========================================================================
-        $masukSebelum = StokBarang::where('id_produk', $produk->id)
-                                ->where('diterima_at', '<', $tanggalMulai)
-                                ->sum('jumlah');
-                                
-        $keluarSebelum = DetailPenjualanStokAlokasi::whereHas('stokBarang', fn($q) => $q->where('id_produk', $produk->id))
-                                ->whereHas('detailPenjualan.penjualan', fn($q) => $q->where('tanggal_penjualan', '<', $tanggalMulai))
-                                ->sum('jumlah_diambil');
-                                
-        $saldoAwal = $masukSebelum - $keluarSebelum;
-        
-        $barisSaldoAwal = [
+    // 3. Kumpulkan semua ID referensi berdasarkan tipenya
+    $referensiIds = $pergerakanStok->groupBy('tipe_referensi')->map(function ($items) {
+        return $items->pluck('id_referensi')->unique()->all();
+    });
+
+    // 4. Lakukan query untuk setiap tipe referensi HANYA JIKA ADA
+    $referensiData = [];
+    if (isset($referensiIds[DetailPembelian::class])) {
+        $referensiData[DetailPembelian::class] = DetailPembelian::whereIn('id', $referensiIds[DetailPembelian::class])
+            ->with('pembelian:id,nomor_pembelian')->get()->keyBy('id');
+    }
+    if (isset($referensiIds[DetailPenjualan::class])) {
+        $referensiData[DetailPenjualan::class] = DetailPenjualan::whereIn('id', $referensiIds[DetailPenjualan::class])
+            ->with('penjualan:id,nomor_penjualan')->get()->keyBy('id');
+    }
+    if (isset($referensiIds[ReturPembelian::class])) {
+        $referensiData[ReturPembelian::class] = ReturPembelian::whereIn('id', $referensiIds[ReturPembelian::class])
+            ->get(['id', 'nomor_retur'])->keyBy('id');
+    }
+    if (isset($referensiIds[ReturPenjualan::class])) {
+        $referensiData[ReturPenjualan::class] = ReturPenjualan::whereIn('id', $referensiIds[ReturPenjualan::class])
+            ->get(['id', 'nomor_retur'])->keyBy('id');
+    }
+    // =====================================================================
+    // ## AKHIR BAGIAN PENGAMBILAN DATA EFISIEN                           ##
+    // =====================================================================
+
+    // 5. Siapkan data untuk view
+    $dataUntukView = [];
+    $dataUntukView[] = [
             'tanggal_display' => $tanggalMulai->isoFormat('D MMM YY'),
-            'jenis_transaksi_display' => 'SALDO AWAL',
-            'nomor_referensi_display' => '-', 'masuk_display' => '-', 'keluar_display' => '-',
-            'saldo_display' => $saldoAwal . ' ' . $produk->satuan,
-            'keterangan_tambahan_display' => "Saldo sebelum periode " . $tanggalMulai->isoFormat('D MMM YY')
-        ];
-
-        // =========================================================================
-        // 2. KUMPULKAN SEMUA PERGERAKAN STOK DALAM PERIODE
-        // =========================================================================
-        $pergerakanStok = collect();
-
-        // A. STOK MASUK: Dari Penerimaan PO dan Retur Pelanggan
-        $stokMasuk = StokBarang::where('id_produk', $produk->id)
-            ->whereBetween('diterima_at', [$tanggalMulai, $tanggalSelesai])
-            ->with([
-                'detailPembelian.pembelian', 
-                'logNomorSeri.retur.detailPenjualan.penjualan.pelanggan' // <-- Relasi penting untuk melacak retur
-            ])
-            ->get();
-
-        foreach ($stokMasuk as $stok) {
-            $jenis_transaksi = 'Penerimaan Lain';
-            $nomor_referensi = 'Batch: ' . $stok->id;
-            $keterangan = 'Penerimaan manual/lainnya. Batch ID: ' . $stok->id;
-
-            // Jika stok ini berasal dari PEMBELIAN
-            if ($stok->detailPembelian && $stok->detailPembelian->pembelian) {
-                $jenis_transaksi = 'Penerimaan PO';
-                $nomor_referensi = $stok->detailPembelian->pembelian->nomor_pembelian;
-                $keterangan = 'Diterima dari Supplier. Batch ID: ' . $stok->id;
-            }
-            // Jika stok ini adalah hasil dari RETUR (dikenali dari kondisi & log)
-            elseif ($stok->kondisi === 'RUSAK' && $stok->logNomorSeri->isNotEmpty()) {
-                $returInfo = $stok->logNomorSeri->first()->retur ?? null;
-                if ($returInfo) {
-                    $pelanggan = $returInfo->detailPenjualan->penjualan->pelanggan->nama ?? 'Umum';
-                    $jenis_transaksi = 'Retur dari Pelanggan';
-                    $nomor_referensi = $returInfo->nomor_retur;
-                    $keterangan = "Retur dari Pelanggan: {$pelanggan}. Batch Karantina ID: {$stok->id}";
+            'jenis_transaksi_display' => 'SALDO AWAL', 'nomor_referensi_display' => '-',
+            'masuk_display' => '-', 'keluar_display' => '-', 'saldo_display' => $saldoAwal . ' ' . $produk->satuan,
+            'keterangan_tambahan_display' => "Saldo sebelum periode " . $tanggalMulai->isoFormat('D MMMM YYYY')];
+    
+    foreach ($pergerakanStok as $gerak) {
+        $nomorReferensi = '-';
+        $keteranganTambahan = $gerak->keterangan ?? '';
+        
+        // Logika untuk menampilkan nomor referensi (sekarang sangat cepat, tanpa query)
+        if ($gerak->id_referensi && isset($referensiData[$gerak->tipe_referensi])) {
+            $referensi = $referensiData[$gerak->tipe_referensi][$gerak->id_referensi] ?? null;
+            if ($referensi) {
+                switch ($gerak->tipe_referensi) {
+                    case DetailPenjualan::class:
+                        $nomorReferensi = $referensi->penjualan->nomor_penjualan ?? 'N/A'; break;
+                    case DetailPembelian::class:
+                        $nomorReferensi = $referensi->pembelian->nomor_pembelian ?? 'N/A'; break;
+                    case ReturPenjualan::class:
+                    case ReturPembelian::class:
+                        $nomorReferensi = $referensi->nomor_retur ?? 'N/A'; break;
                 }
             }
-
-            $pergerakanStok->push([
-                'tanggal' => $stok->diterima_at,
-                'jenis_transaksi' => $jenis_transaksi,
-                'nomor_referensi' => $nomor_referensi,
-                'masuk' => $stok->jumlah,
-                'keluar' => 0,
-                'keterangan_tambahan' => $keterangan,
-            ]);
         }
 
-        // B. STOK KELUAR: Dari Penjualan
-        $stokKeluar = DetailPenjualanStokAlokasi::whereHas('stokBarang', fn($q) => $q->where('id_produk', $produk->id))
-            ->with(['detailPenjualan.penjualan.pelanggan'])
-            ->whereHas('detailPenjualan.penjualan', fn($q) => $q->whereBetween('tanggal_penjualan', [$tanggalMulai, $tanggalSelesai]))
-            ->get();
-
-        foreach ($stokKeluar as $alokasi) {
-            $penjualan = $alokasi->detailPenjualan->penjualan;
-            $pelanggan = $penjualan->pelanggan->nama ?? 'Umum';
-            
-            $pergerakanStok->push([
-                'tanggal' => $penjualan->tanggal_penjualan,
-                'jenis_transaksi' => 'Penjualan',
-                'nomor_referensi' => $penjualan->nomor_penjualan,
-                'masuk' => 0,
-                'keluar' => $alokasi->jumlah_diambil,
-                'keterangan_tambahan' => "Terjual ke Pelanggan: {$pelanggan}. Dari Batch ID: {$alokasi->id_stok_barang}",
-            ]);
+        if ($gerak->nomor_seri) {
+            $keteranganTambahan .= " (SN: {$gerak->nomor_seri})";
         }
 
-        // Anda bisa menambahkan sumber pergerakan lain di sini (Retur Pembelian, Penyesuaian, dll)
-
-        // =========================================================================
-        // 3. OLAH DATA FINAL UNTUK DITAMPILKAN
-        // =========================================================================
-        $pergerakanStokSorted = $pergerakanStok->sortBy('tanggal')->values();
-        
-        $saldoBerjalan = $saldoAwal;
-        $pergerakanStokDenganSaldo = [];
-        $pergerakanStokDenganSaldo[] = $barisSaldoAwal;
-
-        foreach ($pergerakanStokSorted as $gerak) {
-            $saldoBerjalan += $gerak['masuk'] - $gerak['keluar'];
-            $pergerakanStokDenganSaldo[] = [
-                'tanggal_display' => Carbon::parse($gerak['tanggal'])->isoFormat('D MMM YY, HH:mm'),
-                'jenis_transaksi_display' => $gerak['jenis_transaksi'],
-                'nomor_referensi_display' => $gerak['nomor_referensi'],
-                'masuk_display' => $gerak['masuk'] > 0 ? ($gerak['masuk'] . ' ' . $produk->satuan) : '-',
-                'keluar_display' => $gerak['keluar'] > 0 ? ($gerak['keluar'] . ' ' . $produk->satuan) : '-',
-                'saldo_display' => $saldoBerjalan . ' ' . $produk->satuan,
-                'keterangan_tambahan_display' => $gerak['keterangan_tambahan'] ?? '-'
-            ];
-        }
-
-        return view('admin.laporan.stok.kartu_stok_produk', [
-            'produk' => $produk,
-            'tanggalMulai' => $tanggalMulai,
-            'tanggalSelesai' => $tanggalSelesai,
-            'saldoAwalKalkulasi' => $saldoAwal,
-            'pergerakanStokDenganSaldo' => $pergerakanStokDenganSaldo
-        ]);
+        $dataUntukView[] = [
+            'tanggal_display' => $gerak->tanggal_transaksi->isoFormat('D MMM YY, HH:mm'),
+            'jenis_transaksi_display' => ucwords(str_replace('_', ' ', $gerak->tipe_transaksi)),
+            'nomor_referensi_display' => $nomorReferensi,
+            'masuk_display' => $gerak->jumlah_masuk > 0 ? ($gerak->jumlah_masuk . ' ' . $produk->satuan) : '-',
+            'keluar_display' => $gerak->jumlah_keluar > 0 ? ($gerak->jumlah_keluar . ' ' . $produk->satuan) : '-',
+            'saldo_display' => $gerak->saldo_setelah_transaksi . ' ' . $produk->satuan,
+            'keterangan_tambahan_display' => trim($keteranganTambahan),
+        ];
     }
+    
+    return view('admin.laporan.stok.kartu_stok_produk', [
+        'produk' => $produk, 'tanggalMulai' => $tanggalMulai, 'tanggalSelesai' => $tanggalSelesai,
+        'saldoAwalKalkulasi' => $saldoAwal, 'pergerakanStokDenganSaldo' => $dataUntukView
+    ]);
+}
 }

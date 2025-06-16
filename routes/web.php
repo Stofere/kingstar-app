@@ -21,6 +21,7 @@ use App\Http\Controllers\Admin\LaporanPembelianController;
 use App\Http\Controllers\Admin\ReturPembelianController;
 use App\Http\Controllers\Admin\LaporanStokController;
 use App\Http\Controllers\Admin\ProsesReturPelangganController;
+use App\Http\Controllers\Admin\StokOpnameController;
 
 
 // Kasir Controllers
@@ -32,6 +33,7 @@ use App\Http\Controllers\Kasir\ReturPenjualanController;
 // Gudang Controllers
 use App\Http\Controllers\Gudang\GudangDashboardController;
 use App\Http\Controllers\Gudang\PenerimaanController as GudangPenerimaanController;
+use App\Http\Controllers\Admin\StokOpnameController as GudangStokOpnameController;
 
 /*
 |--------------------------------------------------------------------------
@@ -63,7 +65,10 @@ Route::middleware(['auth'])->group(function () {
         Route::resource('supplier', SupplierController::class);
         Route::resource('pelanggan', PelangganController::class);
         Route::resource('pembelian', PembelianController::class);
-
+        Route::resource('retur-pembelian', ReturPembelianController::class);
+        // Route::resource('stok-opname', StokOpnameController::class)->except(['destroy', 'show', 'update', 'createAdjustment', 'updatePhysicalCount']); // Admin hanya bisa index, create, store
+        // Route::post('stok-opname/{stokOpname}/create-adjustment', [StokOpnameController::class, 'createAdjustment'])->name('stok-opname.create_adjustment');
+        // Route::post('stok-opname/{stokOpname}/update-physical-count', [StokOpnameController::class, 'updatePhysicalCount'])->name('stok-opname.update_physical_count');
         // Rute untuk Admin Kelola Alokasi Pesan Barang
         Route::prefix('pesan-barang-alokasi')->name('pesan_barang_alokasi.')->group(function () {
             Route::get('/', [AdminPesanBarangController::class, 'index'])->name('index');
@@ -84,31 +89,30 @@ Route::middleware(['auth'])->group(function () {
             Route::prefix('stok')->name('stok.')->group(function () {
 
                 Route::get('/ringkasan-produk', [LaporanStokController::class, 'ringkasanProduk'])->name('ringkasan_produk');
-                // Nama route lengkap: admin.laporan.stok.ringkasan_produk (SESUAI KEINGINAN ANDA)
 
                 Route::get('/detail-batch/{produk}', [LaporanStokController::class, 'detailBatchProduk'])->name('detail_batch_produk');
-                // Nama route lengkap: admin.laporan.stok.detail_batch_produk (SESUAI KEINGINAN ANDA)
 
                 Route::get('/kartu-stok/{produk}', [LaporanStokController::class, 'generateKartuStok'])->name('kartu_stok.data');
-                // Nama route lengkap: admin.laporan.stok.kartu_stok.data (SESUAI KEINGINAN ANDA)
+
             });
+            
+            
         });
 
+        // === RETUR PEMBELIAN ===
         Route::prefix('retur-pembelian')->name('retur_pembelian.')->group(function () {
             Route::get('/', [ReturPembelianController::class, 'index'])->name('index');
-            Route::get('/create', [ReturPembelianController::class, 'create'])->name('create'); 
+            Route::get('/create', [ReturPembelianController::class, 'create'])->name('create');
             Route::post('/', [ReturPembelianController::class, 'store'])->name('store');
-            Route::get('/{returPembelian}', [ReturPembelianController::class, 'show'])->name('show'); 
-
+            Route::get('/{returPembelian}', [ReturPembelianController::class, 'show'])->name('show');
             Route::get('/{returPembelian}/edit', [ReturPembelianController::class, 'edit'])->name('edit');
             Route::put('/{returPembelian}', [ReturPembelianController::class, 'update'])->name('update');
-
             // AJAX Endpoints
             Route::get('/ajax/search-batch-stok', [ReturPembelianController::class, 'searchBatchStokAjax'])->name('ajax.search_batch_stok');
             Route::get('/ajax/get-serials-from-batch', [ReturPembelianController::class, 'getSerialsFromBatchAjax'])->name('ajax.get_serials_from_batch');
+            // Tambahkan route PO pengganti di sini
+            Route::post('/{returPembelian}/create-replacement-po', [ReturPembelianController::class, 'createReplacementPo'])->name('create_replacement_po');
         });
-
-
 
         Route::prefix('proses-retur-pelanggan')->name('proses_retur_pelanggan.')->group(function () {
             Route::get('/', [ProsesReturPelangganController::class, 'index'])->name('index'); // Daftar retur menunggu tindakan Admin
@@ -182,5 +186,29 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/penerimaan', [GudangPenerimaanController::class, 'index'])->name('penerimaan.index');
         Route::get('/penerimaan/create/{pembelian?}', [GudangPenerimaanController::class, 'create'])->name('penerimaan.create');
         Route::post('/penerimaan', [GudangPenerimaanController::class, 'store'])->name('penerimaan.store');
+        
+        Route::prefix('stok-opname')->name('stok-opname.')->group(function() {
+            Route::get('/', [\App\Http\Controllers\Admin\StokOpnameController::class, 'index'])->name('index');
+            Route::get('/create', [\App\Http\Controllers\Admin\StokOpnameController::class, 'create'])->name('create');
+            Route::post('/', [\App\Http\Controllers\Admin\StokOpnameController::class, 'store'])->name('store');
+            Route::get('/{stokOpname}', [\App\Http\Controllers\Admin\StokOpnameController::class, 'show'])->name('show');
+            // SATU ROUTE UNTUK MENYELESAIKAN DAN MENYESUAIKAN
+            Route::post('/{stokOpname}/finish', [\App\Http\Controllers\Admin\StokOpnameController::class, 'finishAndAdjust'])->name('finish_and_adjust');
+        });
+
     });
+    Route::get('/ajax/produk-penerimaan/search', [GudangPenerimaanController::class, 'searchProdukForPenerimaanAjax'])->name('gudang.ajax.produk.search');
+            Route::prefix('perpindahan-stok')->name('perpindahan-stok.')->group(function () {
+            // Halaman utama untuk menampilkan riwayat perpindahan
+            Route::get('/', [\App\Http\Controllers\Admin\PerpindahanStokController::class, 'index'])->name('index');
+            // Halaman form untuk membuat perpindahan baru
+            Route::get('/create', [\App\Http\Controllers\Admin\PerpindahanStokController::class, 'create'])->name('create');
+            // Aksi untuk menyimpan perpindahan
+            Route::post('/', [\App\Http\Controllers\Admin\PerpindahanStokController::class, 'store'])->name('store');
+            // AJAX untuk mencari batch stok
+            Route::get('/ajax/search-batch', [\App\Http\Controllers\Admin\PerpindahanStokController::class, 'searchBatchAjax'])->name('ajax.search-batch');
+            
+            Route::get('/ajax/get-serials', [\App\Http\Controllers\Admin\PerpindahanStokController::class, 'getSerialsFromBatch'])->name('ajax.get-serials');
+
+        });
 });

@@ -87,4 +87,11 @@ class ReturPembelian extends Model
             $this->attributes['nomor_seri_diretur'] = null;
         }
     }
+
+    public function poPengganti()
+    {
+        // Asumsi kita menyimpan 'replacement_po_id:123' di catatan internal
+        // Ini cara tanpa mengubah skema DB.
+        return $this->belongsTo(Pembelian::class, 'catatan_internal_retur');
+    }
 }

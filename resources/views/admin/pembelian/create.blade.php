@@ -1,12 +1,8 @@
 @extends('layouts.app')
 
-@section('title', 'Buat Pembelian Baru')
+@section('title', isset($dataFromRetur) ? 'Buat PO Barang Pengganti' : 'Buat Pembelian Baru')
 
 @push('styles')
-    {{-- Select2 CSS --}}
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-    {{-- Optional: Select2 Bootstrap 5 Theme --}}
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
     <style>
         /* Style untuk tombol hapus baris */
         .delete-item-btn { cursor: pointer; }
@@ -21,10 +17,24 @@
 
 @section('content')
 <div class="container">
-    <h1 class="mb-4">Buat Pembelian Baru</h1>
+    {{-- Judul dinamis --}}
+    <h1 class="mb-4">@yield('title')</h1>
+
+    {{-- Alert info jika ini adalah PO dari retur --}}
+    @if(isset($dataFromRetur))
+    <div class="alert alert-success mb-4">
+        <h5 class="alert-heading"><i class="bi bi-info-circle-fill me-2"></i>Informasi PO Pengganti</h5>
+        <p class="mb-0">Anda sedang membuat Purchase Order untuk barang pengganti dari nota retur <strong>{{ $dataFromRetur['nomor_retur_asal'] }}</strong>. Supplier dan item produk telah dikunci. Harga Beli akan di-set ke <strong>Rp 0</strong>.</p>
+    </div>
+    @endif
 
     <form action="{{ route('admin.pembelian.store') }}" method="POST" id="form-pembelian">
         @csrf
+        {{-- Hidden input untuk melacak ID retur asal, jika ada --}}
+        @if(isset($dataFromRetur))
+            <input type="hidden" name="id_retur_asal" value="{{ $dataFromRetur['id_retur_asal'] }}">
+        @endif
+
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-light">
                 <h5 class="mb-0">Informasi Pembelian</h5>
@@ -34,17 +44,26 @@
                     {{-- Supplier --}}
                     <div class="col-md-6">
                         <label for="id_supplier" class="form-label">Supplier <span class="text-danger">*</span></label>
-                        <select class="form-select @error('id_supplier') is-invalid @enderror" id="id_supplier" name="id_supplier" required data-placeholder="Cari Supplier...">
-                            <option value=""></option>
-                            @if(old('id_supplier'))
-                                @php
-                                    $oldSupplier = \App\Models\Supplier::find(old('id_supplier'));
-                                @endphp
-                                @if($oldSupplier)
-                                <option value="{{ $oldSupplier->id }}" selected>{{ $oldSupplier->nama}} {{ $oldSupplier->telepon ? '('.$oldSupplier->telepon.')' :'' }}></option>
-                                @endif
+                        <select class="form-select @error('id_supplier') is-invalid @enderror" id="id_supplier" name="id_supplier" required data-placeholder="Cari Supplier..."
+                            {{ isset($dataFromRetur) ? 'disabled' : '' }}>
+                            {{-- Option akan terisi otomatis --}}
+                            @if(isset($dataFromRetur))
+                                <option value="{{ $dataFromRetur['supplier_id'] }}" selected>{{ $dataFromRetur['supplier_text'] }}</option>
+                            @elseif(old('id_supplier'))
+                                 @php $oldSupplier = \App\Models\Supplier::find(old('id_supplier')); @endphp
+                                 @if($oldSupplier)
+                                 <option value="{{ $oldSupplier->id }}" selected>{{ $oldSupplier->nama}} {{ $oldSupplier->telepon ? '('.$oldSupplier->telepon.')' :'' }}></option>
+                                 @else
+                                 <option value=""></option>
+                                 @endif
+                            @else
+                                <option value=""></option>
                             @endif
                         </select>
+                        {{-- Jika disabled, kirim value via hidden input --}}
+                        @if(isset($dataFromRetur))
+                            <input type="hidden" name="id_supplier" value="{{ $dataFromRetur['supplier_id'] }}">
+                        @endif
                         @error('id_supplier') <div class="invalid-feedback">{{ $message }}</div> @enderror
                     </div>
 
@@ -55,20 +74,15 @@
                         @error('tanggal_pembelian') <div class="invalid-feedback">{{ $message }}</div> @enderror
                     </div>
 
-                    {{-- Nomor Pembelian Internal --}}
+                    {{-- Nomor Pembelian Internal (dibuat khusus untuk retur) --}}
                     <div class="col-md-6">
                         <label for="nomor_pembelian" class="form-label">Nomor Pembelian</label>
                         <input type="text" class="form-control @error('nomor_pembelian') is-invalid @enderror"
                             id="nomor_pembelian" name="nomor_pembelian"
-                            value="{{ old('nomor_pembelian') }}"
                             placeholder="Akan digenerate otomatis..."
-                            @if(Auth::user()->role !== 'ADMIN') readonly @endif> {{-- Kondisi readonly --}}
+                            readonly>
                         <div class="form-text">
-                            @if(Auth::user()->role === 'ADMIN')
-                                Kosongkan untuk nomor otomatis atau isi manual (Format: PO-{{ config('app.branch_code', 'XXX') }}-ddmmyy-XXX).
-                            @else
-                                Nomor akan dibuat otomatis oleh sistem.
-                            @endif
+                            Nomor akan dibuat otomatis oleh sistem.
                         </div>
                         @error('nomor_pembelian') <div class="invalid-feedback">{{ $message }}</div> @enderror
                     </div>
@@ -76,36 +90,49 @@
                     {{-- Nomor Faktur Supplier --}}
                     <div class="col-md-6">
                         <label for="nomor_faktur_supplier" class="form-label">Nomor Faktur Supplier</label>
-                        <input type="text" class="form-control @error('nomor_faktur_supplier') is-invalid @enderror" id="nomor_faktur_supplier" name="nomor_faktur_supplier" value="{{ old('nomor_faktur_supplier') }}">
+                        <input type="text" class="form-control @error('nomor_faktur_supplier') is-invalid @enderror" id="nomor_faktur_supplier" name="nomor_faktur_supplier" value="{{ old('nomor_faktur_supplier') }}" {{ isset($dataFromRetur) ? 'readonly' : '' }}>
                         @error('nomor_faktur_supplier') <div class="invalid-feedback">{{ $message }}</div> @enderror
                     </div>
 
-                     {{-- Status Pembelian --}}
+                     {{-- Status Pembelian (dikunci untuk retur) --}}
                     <div class="col-md-6">
                         <label for="status_pembelian" class="form-label">Status Pembelian <span class="text-danger">*</span></label>
-                        <select class="form-select @error('status_pembelian') is-invalid @enderror" id="status_pembelian" name="status_pembelian" required>
-                            <option value="DRAFT" {{ old('status_pembelian', 'DRAFT') == 'DRAFT' ? 'selected' : '' }}>DRAFT</option>
-                            <option value="DIPESAN" {{ old('status_pembelian') == 'DIPESAN' ? 'selected' : '' }}>DIPESAN</option>
-                            {{-- Status lain mungkin tidak relevan saat create --}}
+                        <select class="form-select @error('status_pembelian') is-invalid @enderror" id="status_pembelian" name="status_pembelian" required {{ isset($dataFromRetur) ? 'disabled' : '' }}>
+                            @if(isset($dataFromRetur))
+                                <option value="BARANG_PENGGANTI_RETUR" selected>BARANG PENGGANTI RETUR</option>
+                            @else
+                                <option value="DRAFT" {{ old('status_pembelian', 'DRAFT') == 'DRAFT' ? 'selected' : '' }}>DRAFT</option>
+                                <option value="DIPESAN" {{ old('status_pembelian') == 'DIPESAN' ? 'selected' : '' }}>DIPESAN</option>
+                            @endif
                         </select>
+                         @if(isset($dataFromRetur))
+                            <input type="hidden" name="status_pembelian" value="BARANG_PENGGANTI_RETUR">
+                        @endif
                         @error('status_pembelian') <div class="invalid-feedback">{{ $message }}</div> @enderror
                     </div>
 
                     {{-- Status Pembayaran --}}
                     <div class="col-md-6">
                         <label for="status_pembayaran" class="form-label">Status Pembayaran <span class="text-danger">*</span></label>
-                        <select class="form-select @error('status_pembayaran') is-invalid @enderror" id="status_pembayaran" name="status_pembayaran" required>
-                            <option value="BELUM_LUNAS" {{ old('status_pembayaran', 'BELUM_LUNAS') == 'BELUM_LUNAS' ? 'selected' : '' }}>BELUM LUNAS</option>
-                            <option value="LUNAS" {{ old('status_pembayaran') == 'LUNAS' ? 'selected' : '' }}>LUNAS</option>
-                            <option value="JATUH_TEMPO" {{ old('status_pembayaran') == 'JATUH_TEMPO' ? 'selected' : '' }}>JATUH TEMPO</option>
+                        <select class="form-select @error('status_pembayaran') is-invalid @enderror" id="status_pembayaran" name="status_pembayaran" required {{ isset($dataFromRetur) ? 'disabled' : '' }}>
+                            @if(isset($dataFromRetur))
+                                <option value="LUNAS" selected>LUNAS (Barang Pengganti)</option>
+                            @else
+                                <option value="BELUM_LUNAS" {{ old('status_pembayaran', 'BELUM_LUNAS') == 'BELUM_LUNAS' ? 'selected' : '' }}>BELUM LUNAS</option>
+                                <option value="LUNAS" {{ old('status_pembayaran') == 'LUNAS' ? 'selected' : '' }}>LUNAS</option>
+                                <option value="JATUH_TEMPO" {{ old('status_pembayaran') == 'JATUH_TEMPO' ? 'selected' : '' }}>JATUH TEMPO</option>
+                            @endif
                         </select>
+                        @if(isset($dataFromRetur))
+                            <input type="hidden" name="status_pembayaran" value="LUNAS">
+                        @endif
                         @error('status_pembayaran') <div class="invalid-feedback">{{ $message }}</div> @enderror
                     </div>
 
                      {{-- Tanggal Bayar (Opsional, mungkin muncul jika LUNAS) --}}
-                     <div class="col-md-6" id="tanggal-bayar-group" style="{{ old('status_pembayaran') == 'LUNAS' ? '' : 'display: none;' }}">
+                     <div class="col-md-6" id="tanggal-bayar-group" style="{{ (isset($dataFromRetur) || old('status_pembayaran') == 'LUNAS') ? '' : 'display: none;' }}">
                         <label for="dibayar_at" class="form-label">Tanggal Bayar</label>
-                        <input type="date" class="form-control @error('dibayar_at') is-invalid @enderror" id="dibayar_at" name="dibayar_at" value="{{ old('dibayar_at') }}">
+                        <input type="date" class="form-control @error('dibayar_at') is-invalid @enderror" id="dibayar_at" name="dibayar_at" value="{{ old('dibayar_at', (isset($dataFromRetur) ? date('Y-m-d') : null)) }}" {{ isset($dataFromRetur) ? 'readonly' : '' }}>
                         @error('dibayar_at') <div class="invalid-feedback">{{ $message }}</div> @enderror
                     </div>
 
@@ -132,7 +159,7 @@
                 @endif
 
                 <div class="table-responsive">
-                    <table class="table table-bordered table-hover" id="detail-pembelian-table">
+                    <table class="table table-bordered" id="detail-pembelian-table">
                         <thead class="table-light">
                             <tr>
                                 <th style="width: 40%;">Produk <span class="text-danger">*</span></th>
@@ -143,39 +170,36 @@
                             </tr>
                         </thead>
                         <tbody id="detail-pembelian-body">
-                            {{-- Baris detail akan ditambahkan oleh JS --}}
-                            {{-- Jika ada old input, render baris lama --}}
-                            @if(old('details'))
-                                @foreach(old('details') as $index => $detail)
-                                    <tr class="detail-item-row">
-                                        <td>
-                                            <select class="form-select product-select @error('details.'.$index.'.id_produk') is-invalid @enderror" name="details[{{ $index }}][id_produk]" required data-placeholder="Cari Produk...">
-                                                {{-- Opsi produk lama akan diisi oleh JS atau perlu logic tambahan di sini --}}
-                                                @if(isset($detail['id_produk']))
-                                                    <option value="{{ $detail['id_produk'] }}" selected>{{ \App\Models\Produk::find($detail['id_produk'])->nama ?? 'Produk tidak ditemukan' }}</option>
-                                                @endif
-                                            </select>
-                                            {{-- @error('details.'.$index.'.id_produk') <div class="invalid-feedback d-block">{{ $message }}</div> @enderror --}}
-                                        </td>
-                                        <td>
-                                            <input type="number" class="form-control item-jumlah text-end @error('details.'.$index.'.jumlah') is-invalid @enderror" name="details[{{ $index }}][jumlah]" value="{{ $detail['jumlah'] ?? 1 }}" required min="1" step="1">
-                                            {{-- @error('details.'.$index.'.jumlah') <div class="invalid-feedback d-block">{{ $message }}</div> @enderror --}}
-                                        </td>
-                                        <td>
-                                            <input type="number" class="form-control item-harga text-end @error('details.'.$index.'.harga_beli') is-invalid @enderror" name="details[{{ $index }}][harga_beli]" value="{{ $detail['harga_beli'] ?? 0 }}" required min="0" step="0.01">
-                                            {{-- @error('details.'.$index.'.harga_beli') <div class="invalid-feedback d-block">{{ $message }}</div> @enderror --}}
-                                        </td>
-                                        <td>
-                                            <span class="item-subtotal fw-bold">Rp 0</span>
-                                        </td>
-                                        <td class="text-center">
-                                            <button type="button" class="btn btn-danger btn-sm delete-item-btn" title="Hapus Item">
-                                                <i class="bi bi-trash"></i>
-                                            </button>
-                                        </td>
-                                    </tr>
-                                @endforeach
-                            @endif
+                            {{-- Baris akan diisi oleh JS --}}
+                            {{-- Handle old input if not from retur --}}
+                            @if(!isset($dataFromRetur) && old('details'))
+                                 @foreach(old('details') as $index => $detail)
+                                     <tr class="detail-item-row">
+                                         <td>
+                                             <select class="form-select product-select @error('details.'.$index.'.id_produk') is-invalid @enderror" name="details[{{ $index }}][id_produk]" required data-placeholder="Cari Produk...">
+                                                 @if(isset($detail['id_produk']))
+                                                     @php $oldProduct = \App\Models\Produk::find($detail['id_produk']); @endphp
+                                                     @if($oldProduct)
+                                                     <option value="{{ $oldProduct->id }}" selected>{{ $oldProduct->nama }} ({{ $oldProduct->kode_produk }})</option>
+                                                     @endif
+                                                 @endif
+                                             </select>
+                                         </td>
+                                         <td>
+                                             <input type="number" class="form-control item-jumlah text-end @error('details.'.$index.'.jumlah') is-invalid @enderror" name="details[{{ $index }}][jumlah]" value="{{ $detail['jumlah'] ?? 1 }}" required min="1" step="1">
+                                         </td>
+                                         <td>
+                                             <input type="number" class="form-control item-harga text-end @error('details.'.$index.'.harga_beli') is-invalid @enderror" name="details[{{ $index }}][harga_beli]" value="{{ $detail['harga_beli'] ?? 0 }}" required min="0" step="0.01">
+                                         </td>
+                                         <td>
+                                             <span class="item-subtotal fw-bold">Rp 0</span>
+                                         </td>
+                                         <td class="text-center">
+                                             <button type="button" class="btn btn-danger btn-sm delete-item-btn" title="Hapus Item"><i class="bi bi-trash"></i></button>
+                                         </td>
+                                     </tr>
+                                 @endforeach
+                             @endif
                         </tbody>
                         <tfoot>
                             <tr>
@@ -185,7 +209,8 @@
                         </tfoot>
                     </table>
                 </div>
-                <button type="button" class="btn btn-success btn-sm mt-2" id="add-item-btn">
+                {{-- Tombol Tambah Item di-disable jika dari retur --}}
+                <button type="button" class="btn btn-success btn-sm mt-2" id="add-item-btn" {{ isset($dataFromRetur) ? 'style="display:none;"' : '' }}>
                     <i class="bi bi-plus-circle"></i> Tambah Item
                 </button>
             </div>
@@ -199,7 +224,7 @@
                  {{-- Catatan --}}
                 <div class="mb-3">
                     <label for="catatan" class="form-label">Catatan</label>
-                    <textarea class="form-control @error('catatan') is-invalid @enderror" id="catatan" name="catatan" rows="3">{{ old('catatan') }}</textarea>
+                    <textarea class="form-control @error('catatan') is-invalid @enderror" id="catatan" name="catatan" rows="3">{{ old('catatan', (isset($dataFromRetur) ? 'Barang pengganti untuk nota retur: ' . $dataFromRetur['nomor_retur_asal'] : '')) }}</textarea>
                     @error('catatan') <div class="invalid-feedback">{{ $message }}</div> @enderror
                 </div>
             </div>
@@ -250,12 +275,19 @@
 
     <script>
         $(document).ready(function() {
+            let dataFromRetur = @json($dataFromRetur ?? null);
+            let itemIndex = {{ (isset($dataFromRetur) || !old('details')) ? 0 : count(old('details')) }};
+
             // Fungsi untuk inisialisasi Select2 Supplier (dengan AJAX) sama seperti produk
             $('#id_supplier').select2({
                 theme: "bootstrap-5",
                 width: $(this).data('width') ? $(this).data('width') : $(this).hasClass('w-100') ? '100%' : 'style',
                 placeholder: $(this).data('placeholder'),
-                allowClear: true,
+                allowClear: {{ isset($dataFromRetur) ? 'false' : 'true' }},
+                @if(isset($dataFromRetur))
+                // Jika dari retur dan supplier sudah ada, tidak perlu AJAX
+                // Namun, jika ingin tetap bisa search meski sudah ada value, jangan disable AJAX
+                @else
                 ajax: {
                     url: "{{ route('admin.ajax.supplier.search') }}", // Route baru untuk supplier
                     dataType: 'json',
@@ -278,15 +310,17 @@
                     cache: true
                 },
                 minimumInputLength: 0, // Bisa 0 jika ingin langsung menampilkan list saat diklik
+                @endif
             });
 
             function fetchAndSetPoNumber() {
                 const selectedDate = $('#tanggal_pembelian').val();
                 const nomorInput = $('#nomor_pembelian');
+                const isReturPo = dataFromRetur !== null;
+                const prefix = isReturPo ? 'PO-RTR' : 'PO'; // Contoh prefix beda
 
-                // Hanya fetch jika input readonly (bukan admin yang mungkin sedang input manual)
-                if (nomorInput.is('[readonly]')) {
-                    nomorInput.val('Memuat...'); // Tampilkan loading
+                if (nomorInput.is('[readonly]')) { // Selalu readonly sekarang
+                    nomorInput.val('Memuat...');
                     $.ajax({
                         url: "{{ route('admin.ajax.pembelian.generate_number') }}",
                         type: 'GET',
@@ -294,7 +328,7 @@
                         dataType: 'json',
                         success: function(response) {
                             if (response.success) {
-                                nomorInput.val(response.nomor_pembelian);
+                                nomorInput.val(response.nomor_pembelian.replace('PO-', prefix + '-')); // Ganti prefix jika retur
                             } else {
                                 nomorInput.val('Error!');
                                 // Tampilkan pesan error jika perlu
@@ -306,9 +340,6 @@
                             console.error('AJAX Error:', status, error);
                         }
                     });
-                } else {
-                    // Jika admin bisa edit, mungkin set placeholder saja
-                    nomorInput.attr('placeholder', 'Format: PO-{{ config('app.branch_code', 'XXX') }}-' + formatDatePlaceholder(selectedDate) + '-XXX');
                 }
             }
 
@@ -387,7 +418,7 @@
             }
 
             // Tambah Item
-            let itemIndex = {{ old('details') ? count(old('details')) : 0 }}; // Mulai index dari jumlah item lama
+            // itemIndex sudah diinisialisasi di atas
             $('#add-item-btn').on('click', function() {
                 let template = $('#detail-item-template').html();
                 // Ganti placeholder index dengan index unik
@@ -413,7 +444,9 @@
             });
 
             // Inisialisasi Select2 untuk baris yang sudah ada (jika ada dari old input)
-             $('.product-select').each(function() {
+             // Hanya inisialisasi jika tidak dari retur, karena retur akan dihandle populateFormFromRetur
+             if (!dataFromRetur) {
+                $('.product-select').each(function() {
                  initializeProductSelect2(this);
              });
 
@@ -421,15 +454,60 @@
             calculateTotals();
 
             // Tampilkan/sembunyikan tanggal bayar berdasarkan status pembayaran
-             $('#status_pembayaran').on('change', function() {
-                if ($(this).val() === 'LUNAS') {
-                    $('#tanggal-bayar-group').slideDown();
-                } else {
-                    $('#tanggal-bayar-group').slideUp();
-                    $('#dibayar_at').val(''); // Kosongkan tanggal jika tidak lunas
-                }
-            }).trigger('change'); // Trigger change saat load untuk set state awal
+            function handleTanggalBayarVisibility() {
+                if ($('#status_pembayaran').val() === 'LUNAS' || (dataFromRetur && $('#status_pembayaran').val() === 'LUNAS (Barang Pengganti)')) {
+                     $('#tanggal-bayar-group').slideDown();
+                     if (dataFromRetur && !$('#dibayar_at').val()) { // Jika dari retur dan tanggal bayar kosong, set ke hari ini
+                        $('#dibayar_at').val(new Date().toISOString().slice(0,10));
+                     }
+                 } else {
+                     $('#tanggal-bayar-group').slideUp();
+                     if (!dataFromRetur) { // Jangan kosongkan jika dari retur karena sudah di-set
+                        $('#dibayar_at').val('');
+                     }
+                 }
+            }
 
+            $('#status_pembayaran').on('change', handleTanggalBayarVisibility);
+            handleTanggalBayarVisibility(); // Panggil saat load
+            } // Penutup untuk if (!dataFromRetur)
+
+
+            // =======================================================
+            // ## Logika Baru untuk Mengisi Form dari Data Retur    ##
+            // =======================================================
+            function populateFormFromRetur() {
+                if (!dataFromRetur) return;
+
+                // 1. Tambahkan satu baris item (secara manual, bukan klik tombol)
+                let template = $('#detail-item-template').html();
+                let newRowHtml = template.replace(/__INDEX__/g, itemIndex); // itemIndex akan 0
+                $('#detail-pembelian-body').append(newRowHtml);
+                const newRow = $('#detail-pembelian-body tr:last');
+
+                // 2. Isi data produk di baris tersebut
+                const produkSelect = newRow.find('.product-select');
+                var option = new Option(dataFromRetur.produk_text, dataFromRetur.produk_id, true, true);
+                produkSelect.append(option).trigger('change');
+
+                // 3. Kunci field produk
+                produkSelect.prop('disabled', true);
+                // Kirim value via hidden input (pastikan name-nya benar)
+                newRow.find('td:first').append(`<input type="hidden" name="details[${itemIndex}][id_produk]" value="${dataFromRetur.produk_id}">`);
+
+                // 4. Isi jumlah dan harga, lalu kunci
+                const jumlahInput = newRow.find('.item-jumlah');
+                const hargaInput = newRow.find('.item-harga');
+
+                jumlahInput.val(dataFromRetur.qty).prop('readonly', true);
+                hargaInput.val(0).prop('readonly', true); // Harga 0 untuk pengganti
+
+                // 5. Kunci tombol hapus
+                newRow.find('.delete-item-btn').remove();
+                itemIndex++; // Increment index
+                calculateTotals();
+            }
+            populateFormFromRetur();
         });
     </script>
 @endpush

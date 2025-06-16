@@ -9,6 +9,7 @@ use App\Models\Supplier;
 use App\Models\Produk;
 use App\Models\StokBarang;
 use App\Models\LogNomorSeri;
+use App\Models\RiwayatPergerakanStok; 
 use App\Http\Requests\StorePenerimaanRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,11 +19,16 @@ use Yajra\DataTables\Facades\DataTables;
 
 class PenerimaanController extends Controller
 {
+    /**
+ * Menampilkan daftar PO yang menunggu penerimaan.
+ * FINAL FIX for the 'Terima' button logic.
+     */
     public function index(Request $request)
     {
         if ($request->ajax()) {
+            // OPTIMASI: Eager load semua relasi yang dibutuhkan di awal.
             $query = Pembelian::with(['supplier', 'detailPembelian'])
-                ->whereIn('status_pembelian', ['DIPESAN', 'PENGIRIMAN', 'TIBA_SEBAGIAN'])
+                ->whereIn('status_pembelian', ['DIPESAN', 'PENGIRIMAN', 'TIBA_SEBAGIAN', 'BARANG_PENGGANTI_RETUR']) // Tambah status baru
                 ->whereHas('detailPembelian', function ($q) {
                     $q->whereRaw('jumlah > jumlah_diterima');
                 })
@@ -31,122 +37,136 @@ class PenerimaanController extends Controller
             return DataTables::of($query)
                 ->addIndexColumn()
                 ->addColumn('supplier_nama', function ($row) {
+                    // Aman karena 'supplier' sudah di-load
                     return $row->supplier->nama ?? '<span class="text-muted">N/A</span>';
                 })
                 ->editColumn('tanggal_pembelian_formatted', function ($row) {
                     return Carbon::parse($row->tanggal_pembelian)->isoFormat('D MMM YYYY');
                 })
                 ->addColumn('status_pembelian_badge', function ($row) {
-                    $statusClass = 'secondary'; // Default
-                    if ($row->status_pembelian == 'DIPESAN') $statusClass = 'info';
-                    elseif ($row->status_pembelian == 'PENGIRIMAN') $statusClass = 'primary';
-                    elseif ($row->status_pembelian == 'TIBA_SEBAGIAN') $statusClass = 'warning';
-                    return '<span class="badge bg-' . $statusClass . '">' . str_replace('_', ' ', $row->status_pembelian) . '</span>';
+                    $statusMapping = [
+                        'DIPESAN' => ['class' => 'info', 'text' => 'Dipesan'],
+                        'PENGIRIMAN' => ['class' => 'primary', 'text' => 'Pengiriman'],
+                        'TIBA_SEBAGIAN' => ['class' => 'warning', 'text' => 'Tiba Sebagian'],
+                        'BARANG_PENGGANTI_RETUR' => ['class' => 'success', 'text' => 'Pengganti Retur'],
+                    ];
+                    $statusInfo = $statusMapping[$row->status_pembelian] ?? ['class' => 'secondary', 'text' => str_replace('_', ' ', $row->status_pembelian)];
+                    return '<span class="badge bg-' . $statusInfo['class'] . '">' . $statusInfo['text'] . '</span>';
                 })
                 ->addColumn('item_belum_diterima', function ($row) {
-                    $totalDipesan = $row->detailPembelian->sum('jumlah');
-                    $totalSudahDiterima = $row->detailPembelian->sum('jumlah_diterima');
-                    $belumDiterima = $totalDipesan - $totalSudahDiterima;
+                    // Aman karena 'detailPembelian' sudah di-load
+                    $belumDiterima = $row->detailPembelian->sum(function($detail) {
+                        return $detail->jumlah - $detail->jumlah_diterima;
+                    });
                     return $belumDiterima . ' unit';
                 })
                 ->addColumn('action', function ($row) {
                     $btnProsesPenerimaan = '';
-                    $masihBisaDiterima = $row->detailPembelian()->whereRaw('jumlah > jumlah_diterima')->exists();
+                    $btnShowPO = '<a href="' . route('admin.pembelian.show', $row->id) . '" class="btn btn-info btn-sm" title="Lihat Detail PO" target="_blank"><i class="bi bi-eye"></i></a>';
 
-                    if ($masihBisaDiterima) {
-                        $btnProsesPenerimaan = '<a href="' . route('gudang.penerimaan.create', ['pembelian' => $row->id]) . '" class="btn btn-success btn-sm me-1" title="Proses Penerimaan Barang">
-                                                    <i class="bi bi-box-arrow-in-down"></i> Terima
-                                                </a>';
+                    // KARENA 'whereHas' SUDAH MEMASTIKAN HANYA PO DENGAN ITEM TERTENTU YANG MUNCUL,
+                    // KITA TIDAK PERLU CEK LAGI. CUKUP CEK STATUSNYA SAJA.
+                    // Jika statusnya bukan SELESAI atau DIBATALKAN, berarti masih bisa diproses.
+                    if (!in_array($row->status_pembelian, ['SELESAI', 'DIBATALKAN'])) {
+                        $btnProsesPenerimaan = '<a href="' . route('gudang.penerimaan.create', ['pembelian' => $row->id]) . '" class="btn btn-success btn-sm me-1" title="Proses Penerimaan Barang">                                                     <i class="bi bi-box-arrow-in-down"></i> Terima                                                 </a>';
                     }
-                    $btnShowPO = '<a href="' . route('admin.pembelian.show', $row->id) . '" class="btn btn-info btn-sm" title="Lihat Detail PO"><i class="bi bi-eye"></i></a>';
 
-                    return $btnProsesPenerimaan . $btnShowPO;
-                })
-                ->rawColumns(['supplier_nama', 'status_pembelian_badge', 'action'])
-                ->make(true);
-        }
-        return view('gudang.penerimaan.index');
+                return $btnProsesPenerimaan . $btnShowPO;
+                                })
+                                ->rawColumns(['supplier_nama', 'status_pembelian_badge', 'action'])
+                                ->make(true);
+                        }
+                        return view('gudang.penerimaan.index');
     }
 
     /**
-     * Show the form for creating a new resource.
-     * Can optionally accept a Pembelian model via route model binding.
-     *
-     * @param Pembelian|null $pembelian
-     * @return \Illuminate\Contracts\View\View|\Illuminate\Contracts\View\Factory
+     * Menampilkan form penerimaan.
+     * REVISED to handle different 'tipe_penerimaan'.
      */
-    public function create(Pembelian $pembelian = null)
+    public function create(Request $request, Pembelian $pembelian = null)
     {
-        $suppliers = Supplier::where('status', true)->orderBy('nama')->pluck('nama', 'id');
-        $selectedPembelian = null;
-        $detailItems = [];
-        $tipe_penerimaan = 'MANUAL'; // Default
+        // Langkah 1: Cek apakah model $pembelian berhasil di-load dari URL
+        if (!$pembelian || !$pembelian->exists) {
+            // Jika Anda mengakses /penerimaan/create (tanpa ID), akan masuk ke sini.
+            // Ini adalah penerimaan manual. Jika Anda mengakses /create/3 dan masuk ke sini,
+            // berarti route model binding gagal.
+            // dd('Mode Penerimaan Manual. Tidak ada PO yang dilempar dari route.');
+        }
 
-        if ($pembelian) {
-            // 1. Load relasi detailPembelian dengan constraint
-            $pembelian->load(['detailPembelian' => function ($query) {
-                $query->whereRaw('jumlah > jumlah_diterima')->with('produk');
-            }]);
+        // Jika kode berlanjut, berarti $pembelian berhasil di-load.
 
-            // $pembelian->detailPembelian sekarang hanya berisi item yang belum diterima sepenuhnya.
-            if ($pembelian->detailPembelian->isNotEmpty()) {
-                $selectedPembelian = $pembelian;
-                $tipe_penerimaan = 'PO';
-                foreach ($pembelian->detailPembelian as $detail) {
-                    // $detail sekarang adalah item dari detailPembelian yang jumlah > jumlah_diterima
-                    // dan relasi produk-nya sudah dimuat.
-                    if (!$detail->produk) {
-                        // Kasus jika produk terkait dengan detail ini terhapus atau tidak valid.
-                        // Anda bisa log error ini atau skip item ini.
-                        // Log::warning("Produk tidak ditemukan untuk DetailPembelian ID: {$detail->id} pada Pembelian ID: {$pembelian->id}");
-                        continue;
-                    }
+        // Langkah 2: Muat relasinya.
+        // $pembelian->load(['detailPembelian.produk']);
 
-                    $sisaQty = $detail->jumlah - $detail->jumlah_diterima;
-                    // Sebenarnya kondisi $sisaQty > 0 sudah dijamin oleh constraint eager loading,
-                    // tapi tidak ada salahnya dicek lagi untuk keamanan.
-                    if ($sisaQty > 0) {
-                        $detailItems[] = [
-                            'id_detail_pembelian' => $detail->id,
-                            'id_produk' => $detail->id_produk,
-                            'nama_produk' => $detail->produk->nama . ($detail->produk->kode_produk ? ' (' . $detail->produk->kode_produk . ')' : ''),
-                            'memiliki_serial' => $detail->produk->memiliki_serial,
-                            'jumlah_pesan' => $detail->jumlah,
-                            'jumlah_sudah_diterima' => $detail->jumlah_diterima,
-                            'jumlah_belum_diterima' => $sisaQty,
-                            'jumlah_diterima_sekarang' => 0, // Default ke 0, gudang input manual
-                        ];
-                    }
-                }
+        // Langkah 3: Tampilkan SEMUA data yang kita punya.
+        // dd() akan menghentikan eksekusi dan menampilkan semua isi variabel $pembelian.
+        // dd($pembelian->toArray()); capeee boss
 
-                // Jika setelah iterasi tidak ada item valid yang bisa diproses (misal karena produk hilang)
-                if (empty($detailItems)) {
-                    return redirect()->route('gudang.penerimaan.index')->with('info', 'Tidak ada item yang valid untuk diterima dari PO ' . $pembelian->nomor_pembelian . '. Periksa data produk terkait.');
-                }
+
+        // =======================================================================
+        // Kode di bawah ini tidak akan dieksekusi karena dd() di atas.
+        // akan hapus dd() setelah menemukan masalahnya.
+        // =======================================================================
+        if (!$pembelian || !$pembelian->exists) {
+            $tipe_penerimaan = 'MANUAL';
+            $selectedPembelian = null;
+            $detailItems = [];
+        } else {
+            // Jika ADA, tentukan tipe berdasarkan statusnya
+            if ($pembelian->status_pembelian === 'BARANG_PENGGANTI_RETUR') {
+                $tipe_penerimaan = 'RETUR';
             } else {
-                 // Jika semua item dari PO ini sudah diterima sepenuhnya (hasil dari $pembelian->load(['detailPembelian' => ...]) kosong)
+                $tipe_penerimaan = 'PO';
+            }
+            
+            // =========================================================================
+            // ## FIX FINAL: Cara yang lebih pasti untuk memuat dan memeriksa relasi ##
+            // =========================================================================
+
+            // 1. Muat relasi yang dibutuhkan
+            $pembelian->load([
+                'detailPembelian.produk:id,nama,kode_produk,memiliki_serial'
+            ]);
+
+            // 2. Filter koleksi detailPembelian yang sudah di-load di memori
+            $itemsToReceive = $pembelian->detailPembelian->filter(function ($detail) {
+                return $detail->jumlah > $detail->jumlah_diterima;
+            });
+
+            // 3. Cek apakah hasil filter ada isinya
+            if ($itemsToReceive->isEmpty()) {
                 return redirect()->route('gudang.penerimaan.index')->with('info', 'Semua item dari PO ' . $pembelian->nomor_pembelian . ' sudah diterima sepenuhnya.');
+            }
+
+            // 4. Jika ada isinya, siapkan data untuk view
+            $selectedPembelian = $pembelian;
+            $detailItems = [];
+            foreach ($itemsToReceive as $detail) {
+                if (!$detail->produk) continue;
+
+                $sisaQty = $detail->jumlah - $detail->jumlah_diterima;
+                $detailItems[] = [
+                    'id_detail_pembelian' => $detail->id,
+                    'id_produk' => $detail->id_produk,
+                    'nama_produk' => $detail->produk->nama . ($detail->produk->kode_produk ? ' (' . $detail->produk->kode_produk . ')' : ''),
+                    'memiliki_serial' => $detail->produk->memiliki_serial,
+                    'jumlah_pesan' => $detail->jumlah,
+                    'jumlah_sudah_diterima' => $detail->jumlah_diterima,
+                    'jumlah_belum_diterima' => $sisaQty,
+                    'jumlah_diterima_sekarang' => 0,
+                ];
             }
         }
 
+        // Data lain untuk view
+        $suppliers = Supplier::where('status', true)->orderBy('nama')->pluck('nama', 'id');
         $lokasiPenyimpanan = ['GUDANG' => 'GUDANG', 'TOKO' => 'TOKO'];
         $tipeGaransi = ['NONE' => 'NONE', 'RESMI' => 'RESMI', 'SELF_SERVICE' => 'SELF_SERVICE'];
-        $kondisiBarang = [
-            'BAIK' => 'BAIK',
-            'RUSAK_MINOR' => 'RUSAK MINOR',
-            'RUSAK' => 'RUSAK',
-            'SERVIS' => 'SERVIS',
-            'KOMPLAIN_SUPPLIER' => 'KOMPLAIN SUPPLIER',
-        ];
+        $kondisiBarang = ['BAIK' => 'BAIK'];
 
         return view('gudang.penerimaan.create', compact(
-            'suppliers',
-            'selectedPembelian',
-            'detailItems',
-            'lokasiPenyimpanan',
-            'tipeGaransi',
-            'kondisiBarang',
-            'tipe_penerimaan'
+            'suppliers', 'selectedPembelian', 'detailItems', 'lokasiPenyimpanan',
+            'tipeGaransi', 'kondisiBarang', 'tipe_penerimaan'
         ));
     }
 
@@ -158,8 +178,8 @@ class PenerimaanController extends Controller
         $idPembelian = $validated['id_pembelian'] ?? null;
         $idSupplierUntukStok = null;
 
-        if ($tipePenerimaan === 'PO' && $idPembelian) {
-            $pembelianData = Pembelian::find($idPembelian); 
+        if ($tipePenerimaan === 'PO' || $tipePenerimaan === 'RETUR') {
+            $pembelianData = Pembelian::find($idPembelian);
             if ($pembelianData) {
                 $idSupplierUntukStok = $pembelianData->id_supplier;
             }
@@ -173,51 +193,36 @@ class PenerimaanController extends Controller
 
             foreach ($validated['items'] as $itemData) {
                 $jumlahDiterimaSekarang = (int)($itemData['jumlah_diterima_sekarang'] ?? 0);
-
-                if ($jumlahDiterimaSekarang <= 0) {
-                    continue;
-                }
+                if ($jumlahDiterimaSekarang <= 0) continue;
+                
                 $adaItemDiterima = true;
-
                 $produk = Produk::find($itemData['id_produk']);
-                if (!$produk) {
-                    throw new \Exception("Produk dengan ID {$itemData['id_produk']} tidak ditemukan.");
-                }
+                if (!$produk) throw new \Exception("Produk dengan ID {$itemData['id_produk']} tidak ditemukan.");
 
                 $hargaBeliUntukStok = 0;
-                $idDetailPembelian = null;
+                $idDetailPembelian = $itemData['id_detail_pembelian'] ?? null;
 
-                if ($tipePenerimaan === 'PO' && isset($itemData['id_detail_pembelian'])) {
-                    $detailPO = DetailPembelian::find($itemData['id_detail_pembelian']);
+                if ($idDetailPembelian) {
+                    $detailPO = DetailPembelian::find($idDetailPembelian);
                     if ($detailPO) {
                         $hargaBeliUntukStok = $detailPO->harga_beli;
-                        $idDetailPembelian = $detailPO->id;
                     }
                 }
 
+                // Buat record stok baru
                 $stokBarang = StokBarang::create([
-                    'id_produk' => $produk->id,
-                    'id_detail_pembelian' => $idDetailPembelian,
-                    'id_supplier' => $idSupplierUntukStok,
-                    'harga_beli' => $hargaBeliUntukStok,
-                    'jumlah' => $jumlahDiterimaSekarang,
-                    'diterima_at' => $diterimaAt,
-                    'tipe_garansi' => $itemData['tipe_garansi'],
-                    'tipe_stok' => 'REGULER',
-                    'lokasi' => $itemData['lokasi'],
+                    'id_produk' => $produk->id, 'id_detail_pembelian' => $idDetailPembelian, 'id_supplier' => $idSupplierUntukStok,
+                    'harga_beli' => $hargaBeliUntukStok, 'jumlah' => $jumlahDiterimaSekarang, 'diterima_at' => $diterimaAt,
+                    'tipe_garansi' => $itemData['tipe_garansi'], 'tipe_stok' => 'REGULER', 'lokasi' => $itemData['lokasi'],
                     'kondisi' => $itemData['kondisi'],
                 ]);
 
+                // Update jumlah_diterima di detail_pembelian
                 if ($idDetailPembelian) {
-                    $detailPOToUpdate = DetailPembelian::find($idDetailPembelian);
-                    if ($detailPOToUpdate) {
-                        $detailPOToUpdate->increment('jumlah_diterima', $jumlahDiterimaSekarang);
-                    }
+                    DetailPembelian::find($idDetailPembelian)->increment('jumlah_diterima', $jumlahDiterimaSekarang);
                 }
 
-                // ================================================================
-                // === BLOK VALIDASI & LOG NOMOR SERI  ===
-                // ================================================================
+                // Proses Log Nomor Seri (Logika lama Anda, biarkan saja)
                 if ($produk->memiliki_serial && isset($itemData['nomor_seri']) && is_array($itemData['nomor_seri'])) {
                     foreach ($itemData['nomor_seri'] as $noSeri) {
                         $trimmedSn = trim($noSeri);
@@ -246,52 +251,96 @@ class PenerimaanController extends Controller
                         ]);
                     }
                 }
-                // ================================================================
-                // === BLOK PENANGANAN NOMOR SERI SELESAI ===
-                // ================================================================
-            }
+                // =====================================================================
+                // ## PENCATATAN BARU KE RIWAYAT PERGERAKAN STOK                      ##
+                // =====================================================================
+                $keteranganRiwayat = 'Penerimaan ' . ($pembelianData->nomor_pembelian ?? 'Manual');
+                if ($produk->memiliki_serial && !empty($itemData['nomor_seri'])) {
+                    foreach ($itemData['nomor_seri'] as $sn) {
+                        $saldoTerakhir = RiwayatPergerakanStok::where('id_produk', $produk->id)->lockForUpdate()->latest('id')->first();
+                        $saldoSebelumnya = $saldoTerakhir->saldo_setelah_transaksi ?? 0;
+                        RiwayatPergerakanStok::create([
+                            'id_produk' => $produk->id, 'id_stok_barang_terkait' => $stokBarang->id,
+                            'nomor_seri' => trim($sn), 'tipe_transaksi' => 'PENERIMAAN',
+                            'jumlah_masuk' => 1, 'jumlah_keluar' => 0,
+                            'saldo_setelah_transaksi' => $saldoSebelumnya + 1,
+                            'id_referensi' => $idDetailPembelian, 'tipe_referensi' => DetailPembelian::class,
+                            'tanggal_transaksi' => $diterimaAt, 'keterangan' => $keteranganRiwayat,
+                            'id_pengguna' => Auth::id(),
+                        ]);
+                    }
+                } else {
+                    $saldoTerakhir = RiwayatPergerakanStok::where('id_produk', $produk->id)->lockForUpdate()->latest('id')->first();
+                    $saldoSebelumnya = $saldoTerakhir->saldo_setelah_transaksi ?? 0;
+                    RiwayatPergerakanStok::create([
+                        'id_produk' => $produk->id, 'id_stok_barang_terkait' => $stokBarang->id,
+                        'tipe_transaksi' => 'PENERIMAAN', 'jumlah_masuk' => $jumlahDiterimaSekarang,
+                        'jumlah_keluar' => 0,
+                        'saldo_setelah_transaksi' => $saldoSebelumnya + $jumlahDiterimaSekarang,
+                        'id_referensi' => $idDetailPembelian, 'tipe_referensi' => DetailPembelian::class,
+                        'tanggal_transaksi' => $diterimaAt, 'keterangan' => $keteranganRiwayat,
+                        'id_pengguna' => Auth::id(),
+                    ]);
+                }
+                // =====================================================================
+                // ## AKHIR PENCATATAN BARU                                         ##
+                // =====================================================================
+            } // End foreach
 
             if (!$adaItemDiterima) {
                 DB::rollBack();
-                return redirect()->back()
-                                 ->with('error', 'Tidak ada item yang diinput untuk diterima.')
-                                 ->withInput();
+                return redirect()->back()->with('error', 'Tidak ada item yang diinput untuk diterima.')->withInput();
             }
 
-            if ($tipePenerimaan === 'PO' && $idPembelian) {
+            // Update status PO utama setelah semua item diproses
+            if ($idPembelian) {
                 $pembelianToUpdate = Pembelian::with('detailPembelian')->find($idPembelian);
                 if ($pembelianToUpdate) {
-                    $semuaDiterima = true;
-                    $adaYangDiterimaSebagian = false;
-                    foreach ($pembelianToUpdate->detailPembelian as $detail) {
-                        if ($detail->jumlah > $detail->jumlah_diterima) {
-                            $semuaDiterima = false;
-                        }
-                        if ($detail->jumlah_diterima > 0 && $detail->jumlah_diterima < $detail->jumlah) {
-                            $adaYangDiterimaSebagian = true;
-                        }
-                    }
+                    $semuaDiterima = $pembelianToUpdate->detailPembelian->every(function ($detail) {
+                        return $detail->jumlah <= $detail->jumlah_diterima;
+                    });
 
                     if ($semuaDiterima) {
                         $pembelianToUpdate->status_pembelian = 'SELESAI';
-                    } elseif ($pembelianToUpdate->detailPembelian()->where('jumlah_diterima', '>', 0)->exists() || $adaYangDiterimaSebagian) {
-                        if ($pembelianToUpdate->status_pembelian !== 'SELESAI') {
-                             $pembelianToUpdate->status_pembelian = 'TIBA_SEBAGIAN';
-                        }
+                    } else {
+                        $pembelianToUpdate->status_pembelian = 'TIBA_SEBAGIAN';
                     }
                     $pembelianToUpdate->save();
                 }
             }
 
             DB::commit();
-            return redirect()->route('gudang.penerimaan.index')
-                             ->with('success', 'Penerimaan barang berhasil dicatat.');
+            return redirect()->route('gudang.penerimaan.index')->with('success', 'Penerimaan barang berhasil dicatat.');
+
         } catch (\Exception $e) {
             DB::rollBack();
-            // Log::error('Error store penerimaan: '. $e->getMessage() . ' - Trace: ' . $e->getTraceAsString()); // Tambahkan trace untuk debug
-            return redirect()->back()
-                             ->with('error', 'Terjadi kesalahan saat mencatat penerimaan: ' . $e->getMessage())
-                             ->withInput();
+            return redirect()->back()->with('error', 'Terjadi kesalahan: ' . $e->getMessage())->withInput();
         }
     }
+
+    /**
+     * FUNGSI BARU: AJAX untuk mencari produk di form penerimaan manual.
+     * Dapat diakses oleh Gudang.
+     */
+    public function searchProdukForPenerimaanAjax(Request $request)
+    {
+        $searchTerm = $request->input('q', '');
+        $produk = Produk::where('status', true)
+            ->where(function ($q) use ($searchTerm) {
+                $q->where('nama', 'LIKE', "%{$searchTerm}%")
+                  ->orWhere('kode_produk', 'LIKE', "%{$searchTerm}%");
+            })
+            ->limit(20)->get(['id', 'nama', 'kode_produk', 'memiliki_serial']);
+
+        $results = $produk->map(function ($item) {
+            return [
+                'id' => $item->id,
+                'text' => $item->nama . ($item->kode_produk ? " ({$item->kode_produk})" : ""),
+                'has_serial' => (bool)$item->memiliki_serial
+            ];
+        });
+
+        return response()->json(['results' => $results]);
+    }
+
 }

@@ -1,10 +1,10 @@
 <?php
 
 namespace App\Http\Controllers\Admin;
-
 use App\Http\Controllers\Controller;
 use App\Models\Pembelian;
 use App\Models\DetailPembelian; // Import DetailPembelian
+use App\Models\ReturPembelian; // Import ReturPembelian
 use App\Models\Supplier;      // Import Supplier
 use App\Models\Produk;        // Import Produk (untuk create/edit)
 use App\Http\Requests\StorePembelianRequest;  
@@ -13,8 +13,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;       // Untuk Transaksi Database
 use Illuminate\Support\Facades\Auth;    // Untuk mendapatkan ID pengguna
 use Yajra\DataTables\Facades\DataTables; // Import DataTables
-use Carbon\Carbon;                      // Import Carbon untuk format tanggal
 use Illuminate\Http\JsonResponse;
+use Carbon\Carbon; 
 
 
 class PembelianController extends Controller
@@ -117,16 +117,40 @@ class PembelianController extends Controller
     /**
      * Show the form for creating a new resource.
      *
-     * @return \Illuminate\Contracts\View\View|\Illuminate\Contracts\View\Factory
+ * REVISED to handle creating a PO from a return.
+     *
+     * @param \Illuminate\Http\Request $request
+     * @return \Illuminate\Contracts\View\View
      */
-    public function create()
+    public function create(Request $request)
     {
-        // Ambil data yang diperlukan untuk form (misal: supplier, produk)
-        $suppliers = Supplier::where('status', true)->orderBy('nama')->pluck('nama', 'id');
-        // Produk mungkin diambil via AJAX di form untuk performa jika banyak
-        // $produk = Produk::where('status', true)->orderBy('nama')->get(['id', 'nama', 'kode_produk']);
+        $dataFromRetur = null;
+        $nomorPoOtomatis = '';
 
-        return view('admin.pembelian.create');
+        // Cek jika kita datang dari link retur
+        if ($request->has('from_retur')) {
+            $supplier = Supplier::find($request->input('supplier'));
+            $produk = Produk::find($request->input('produk'));
+
+            if ($supplier && $produk) {
+                $dataFromRetur = [
+                    'supplier_id' => $supplier->id,
+                    'supplier_text' => $supplier->nama . ($supplier->telepon ? " ({$supplier->telepon})" : ''),
+                    'produk_id' => $produk->id,
+                    'produk_text' => $produk->nama . ($produk->kode_produk ? " ({$produk->kode_produk})" : ''),
+                    'qty' => $request->input('qty'),
+                    'nomor_retur_asal' => $request->input('nomor_retur'),
+                    'id_retur_asal' => $request->input('from_retur'),
+                ];
+                // Generate nomor PO khusus retur
+                $nomorPoOtomatis = $this->generateNextReplacementPoNumber(now());
+            }
+        } else {
+            // Generate nomor PO biasa
+            $nomorPoOtomatis = $this->generateNextPurchaseOrderNumber(now());
+        }
+        
+        return view('admin.pembelian.create', compact('dataFromRetur', 'nomorPoOtomatis'));
     }
 
     /**
@@ -139,73 +163,67 @@ class PembelianController extends Controller
     public function store(StorePembelianRequest $request)
     {
         $validated = $request->validated();
-    
+
         DB::beginTransaction();
         try {
-            $nomorPembelianFinal = '';
             $tanggalPembelian = Carbon::parse($validated['tanggal_pembelian']);
+            $isPoRetur = $request->has('id_retur_asal');
 
-            // Cek jika Admin memasukkan nomor manual dan validasi lolos
-            if (Auth::user()->role === 'ADMIN' && $request->filled('nomor_pembelian')) {
-                // Pasitkan validasi di StorePembelianRequest sudah mencakup format dan uniqueness
-                $nomorPembelianFinal = $validated['nomor_pembelian'];
+            // Generate nomor PO berdasarkan tipe
+            if ($isPoRetur) {
+                $nomorPembelianFinal = $this->generateNextReplacementPoNumber($tanggalPembelian);
             } else {
-                // Generate nomor otomatis (gunakan tanggal dari form)
                 $nomorPembelianFinal = $this->generateNextPurchaseOrderNumber($tanggalPembelian);
             }
 
-    
-            // 1. Buat data Pembelian utama
+            // Buat Pembelian utama
             $pembelian = Pembelian::create([
                 'id_supplier' => $validated['id_supplier'],
                 'id_pengguna' => Auth::id(),
-                // Gunakan nomor yang digenerate, abaikan input user jika ada
                 'nomor_pembelian' => $nomorPembelianFinal,
                 'nomor_faktur_supplier' => $validated['nomor_faktur_supplier'] ?? null,
-                'tanggal_pembelian' => $tanggalPembelian->format('Y-m-d'), // Tetap gunakan tanggal dari form
-                'metode_pembayaran' => $validated['metode_pembayaran'] ?? null,
-                'status_pembayaran' => $validated['status_pembayaran'] ?? 'BELUM_LUNAS',
-                'dibayar_at' => $validated['dibayar_at'] ?? null,
-                'status_pembelian' => $validated['status_pembelian'] ?? 'DRAFT',
-                'catatan' => $validated['catatan'] ?? null,
+                'tanggal_pembelian' => $tanggalPembelian->format('Y-m-d'),
                 'total_harga' => 0, // Akan dihitung ulang
-                'status' => $validated['status'] ?? true,
+                'metode_pembayaran' => $isPoRetur ? null : ($validated['metode_pembayaran'] ?? null),
+                'status_pembayaran' => $isPoRetur ? 'LUNAS' : ($validated['status_pembayaran'] ?? 'BELUM_LUNAS'),
+                'dibayar_at' => $isPoRetur ? $tanggalPembelian->format('Y-m-d') : ($validated['dibayar_at'] ?? null),
+                'status_pembelian' => $isPoRetur ? 'BARANG_PENGGANTI_RETUR' : ($validated['status_pembelian'] ?? 'DRAFT'),
+                'catatan' => $validated['catatan'] ?? null,
+                'status' => true,
             ]);
 
-            // 2. Proses dan simpan Detail Pembelian
+            // Proses Detail Pembelian
             $totalHargaPembelian = 0;
-            if (isset($validated['details']) && is_array($validated['details'])) {
-                foreach ($validated['details'] as $detail) {
-                    // Pastikan data detail valid sebelum disimpan
-                    if (isset($detail['id_produk'], $detail['jumlah'], $detail['harga_beli'])) {
-                        $pembelian->detailPembelian()->create([
-                            'id_produk' => $detail['id_produk'],
-                            'jumlah' => $detail['jumlah'],
-                            'harga_beli' => $detail['harga_beli'],
-                            'jumlah_diterima' => 0, // Awalnya 0
-                            // 'catatan' => $detail['catatan'] ?? null,
-                        ]);
-                        // Akumulasi total harga
-                        $totalHargaPembelian += ($detail['jumlah'] * $detail['harga_beli']);
-                    }
-                }
+            foreach ($validated['details'] as $detail) {
+                $pembelian->detailPembelian()->create([
+                    'id_produk' => $detail['id_produk'],
+                    'jumlah' => $detail['jumlah'],
+                    'harga_beli' => $detail['harga_beli'], // Akan 0 jika dari retur
+                ]);
+                $totalHargaPembelian += ($detail['jumlah'] * $detail['harga_beli']);
             }
 
-            // 3. Update total harga di Pembelian utama
+            // Update total harga
             $pembelian->total_harga = $totalHargaPembelian;
             $pembelian->save();
 
-            DB::commit(); // Simpan semua perubahan jika berhasil
+            // Jika ini PO dari retur, update catatan retur aslinya
+            if ($isPoRetur) {
+                $returAsal = ReturPembelian::find($request->input('id_retur_asal'));
+                if ($returAsal) {
+                    $returAsal->catatan_internal_retur = 'replacement_po_id:' . $pembelian->id;
+                    $returAsal->save();
+                }
+            }
+            
+            DB::commit();
 
             return redirect()->route('admin.pembelian.index')
-                             ->with('success', 'Pembelian baru (' . $nomorPembelianFinal . ') berhasil ditambahkan.'); // Tampilkan nomor di pesan sukses
-
+                            ->with('success', 'Pembelian baru (' . $nomorPembelianFinal . ') berhasil ditambahkan.');
         } catch (\Exception $e) {
-            DB::rollBack(); // Batalkan semua perubahan jika terjadi error
-            // Log error jika perlu: Log::error('Error store pembelian: '. $e->getMessage());
+            DB::rollBack();
             return redirect()->back()
-                             ->with('error', 'Terjadi kesalahan saat menyimpan pembelian: ' . $e->getMessage())
-                             ->withInput(); // Kembalikan input lama ke form
+                            ->with('error', 'Terjadi kesalahan: ' . $e->getMessage())->withInput();
         }
     }
 
@@ -453,5 +471,22 @@ class PembelianController extends Controller
             // Log::error('Error generate PO number AJAX: '. $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Gagal memprediksi nomor pembelian.'], 500);
         } 
+    }
+
+    private function generateNextReplacementPoNumber(Carbon $date): string
+    {
+        $branchCode = config('app.branch_code', 'KGT');
+        $dateFormatted = $date->format('dmy');
+        $prefix = "PO-RTR-{$branchCode}-{$dateFormatted}-"; // Prefix khusus
+        $lastToday = Pembelian::where('nomor_pembelian', 'LIKE', $prefix . '%')
+                                ->orderBy('nomor_pembelian', 'desc')->first();
+        $nextSequence = 1;
+        if ($lastToday) {
+            $lastSequencePart = substr($lastToday->nomor_pembelian, strlen($prefix));
+            if (is_numeric($lastSequencePart)) {
+                $nextSequence = (int)$lastSequencePart + 1;
+            }
+        }
+        return $prefix . str_pad($nextSequence, 3, '0', STR_PAD_LEFT);
     }
 }
