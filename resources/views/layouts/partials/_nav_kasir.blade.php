@@ -1,0 +1,5 @@
+{{-- Navigasi khusus untuk Kasir --}}
+<li class="nav-item"><a class="nav-link {{ request()->routeIs('kasir.dashboard') ? 'active' : '' }}" href="{{ route('kasir.dashboard') }}"><i class="bi bi-speedometer2 me-1"></i> Dashboard</a></li>
+<li class="nav-item"><a class="nav-link {{ request()->routeIs('kasir.penjualan.create') ? 'active' : '' }}" href="{{ route('kasir.penjualan.create') }}"><i class="bi bi-cart-plus me-1"></i> Penjualan Baru</a></li>
+<li class="nav-item"><a class="nav-link {{ request()->routeIs('kasir.pesan_barang_selesai.*') ? 'active' : '' }}" href="{{ route('kasir.pesan_barang_selesai.index') }}"><i class="bi bi-box-seam me-1"></i> Selesaikan Pesanan</a></li>
+<li class="nav-item"><a class="nav-link {{ request()->routeIs('kasir.retur_penjualan.*') ? 'active' : '' }}" href="{{ route('kasir.retur_penjualan.index') }}"><i class="bi bi-arrow-return-left me-1"></i> Retur Penjualan</a></li>

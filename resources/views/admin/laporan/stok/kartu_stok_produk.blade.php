@@ -64,42 +64,40 @@
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-striped table-hover table-sm kartu-stok-table mb-0">
+                <table class="table table-bordered table-hover">
                     <thead class="table-light">
                         <tr>
-                            <th style="width: 15%;">Tanggal & Waktu</th>
-                            <th style="width: 20%;">Jenis Transaksi</th>
-                            <th style="width: 15%;">No. Referensi</th>
-                            <th class="text-end" style="width: 10%;">Masuk</th>
-                            <th class="text-end" style="width: 10%;">Keluar</th>
-                            <th class="text-end" style="width: 10%;">Saldo</th>
-                            <th style="width: 20%;">Keterangan Tambahan</th>
+                            <th>Tanggal & Waktu</th>
+                            <th>Jenis Transaksi</th>
+                            <th>No. Referensi</th>
+                            <th class="text-center">Masuk</th>
+                            <th class="text-center">Keluar</th>
+                            <th class="text-end">Saldo</th>
+                            <th>Keterangan Tambahan</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @if(empty($pergerakanStokDenganSaldo) || ($tanggalMulai && count($pergerakanStokDenganSaldo) <= 1 && $pergerakanStokDenganSaldo[0]['jenis_transaksi_display'] === 'SALDO AWAL' && empty(array_slice($pergerakanStokDenganSaldo, 1))))
-                            {{-- Kondisi di atas mengecek apakah hanya ada saldo awal (jika difilter) dan tidak ada pergerakan lain --}}
+                        @forelse($dataUntukView as $data)
                             <tr>
-                                <td colspan="7" class="text-center text-muted py-4">
-                                    Tidak ada pergerakan stok untuk produk dan periode yang dipilih.
-                                    @if(!$tanggalMulai && empty($pergerakanStokDenganSaldo))
-                                        <br><small>(Atau produk ini belum pernah memiliki histori stok sama sekali)</small>
+                                <td class="text-nowrap">{{ $data['tanggal_display'] }}</td>
+                                <td>{{ $data['jenis_transaksi_display'] }}</td>
+                                <td>
+                                    @if(isset($data['referensi_link']) && $data['referensi_link'])
+                                        <a href="{{ $data['referensi_link'] }}" target="_blank">{{ $data['nomor_referensi_display'] }}</a>
+                                    @else
+                                        {{ $data['nomor_referensi_display'] }}
                                     @endif
                                 </td>
+                                <td class="text-center">{{ $data['masuk_display'] }}</td>
+                                <td class="text-center">{{ $data['keluar_display'] }}</td>
+                                <td class="text-end fw-bold">{{ $data['saldo_display'] }}</td>
+                                <td>{{ $data['keterangan_tambahan_display'] }}</td>
                             </tr>
-                        @else
-                            @foreach ($pergerakanStokDenganSaldo as $gerak)
-                                <tr class="{{ $gerak['jenis_transaksi_display'] === 'SALDO AWAL' ? 'table-secondary fw-bold' : '' }}">
-                                    <td>{{ $gerak['tanggal_display'] }}</td>
-                                    <td>{{ $gerak['jenis_transaksi_display'] }}</td>
-                                    <td>{{ $gerak['nomor_referensi_display'] }}</td>
-                                    <td class="text-end">{{ $gerak['masuk_display'] }}</td>
-                                    <td class="text-end">{{ $gerak['keluar_display'] }}</td>
-                                    <td class="text-end fw-bold">{{ $gerak['saldo_display'] }}</td>
-                                    <td><small>{{ $gerak['keterangan_tambahan_display'] }}</small></td>
-                                </tr>
-                            @endforeach
-                        @endif
+                        @empty
+                            <tr>
+                                <td colspan="7" class="text-center text-muted">Tidak ada pergerakan stok pada periode ini.</td>
+                            </tr>
+                        @endforelse
                     </tbody>
                 </table>
             </div>

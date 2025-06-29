@@ -64,46 +64,45 @@ class PembelianController extends Controller
                     return '<span class="badge bg-' . $bayarClass . '">' . $row->status_pembayaran . '</span>';
                 })
                 ->addColumn('action', function ($row) {
-                    // Membuat HTML untuk tombol aksi (Lihat, Edit, Hapus)
                     $btnShow = '<a href="' . route('admin.pembelian.show', $row->id) . '" class="btn btn-info btn-sm me-1" title="Lihat Detail"><i class="bi bi-eye"></i></a>';
                     $btnEdit = '';
                     $btnDelete = '';
-                    $btnProsesPenerimaan = ''; // Variabel baru untuk tombol penerimaan
+                    $btnProsesPenerimaan = '';
+                    $btnLunasi = ''; // Tombol baru untuk pelunasan
 
-                    // ===>>> LOGIKA TOMBOL PROSES PENERIMAAN <<<===
-                    // Tampilkan tombol jika status 'DIPESAN' atau 'TIBA_SEBAGIAN'
-                    // dan jika masih ada item yang belum diterima penuh (ini perlu dicek lebih detail jika mau)
-                    if (in_array($row->status_pembelian, ['DIPESAN', 'TIBA_SEBAGIAN'])) {
-                        // Cek apakah masih ada item yang bisa diterima
-                        // Ini bisa menjadi query tambahan atau flag di model Pembelian
-                        // Untuk sederhana, kita tampilkan jika statusnya memungkinkan
-                        $masihBisaDiterima = true; // Asumsi awal, idealnya ada pengecekan
-                        // Contoh pengecekan (membutuhkan relasi detailPembelian):
-                        // $masihBisaDiterima = $row->detailPembelian()->whereRaw('jumlah > jumlah_diterima')->exists();
-
-                        if ($masihBisaDiterima) {
-                             $btnProsesPenerimaan = '<a href="' . route('gudang.penerimaan.create', ['pembelian' => $row->id]) . '" class="btn btn-success btn-sm me-1" title="Proses Penerimaan Barang">
-                                                        <i class="bi bi-box-arrow-in-down"></i> Terima
-                                                    </a>';
-                        }
-                    }
-                    // ===>>> AKHIR LOGIKA <<<===
-
-                    // Logika kondisional untuk tombol Edit
+                    // Tombol Edit: Hanya untuk DRAFT dan DIPESAN
                     if (in_array($row->status_pembelian, ['DRAFT', 'DIPESAN'])) {
                         $btnEdit = '<a href="' . route('admin.pembelian.edit', $row->id) . '" class="btn btn-warning btn-sm me-1" title="Edit"><i class="bi bi-pencil-square"></i></a>';
                     }
 
-                    // Logika kondisional untuk tombol Hapus
-                    if (in_array($row->status_pembelian, ['DRAFT', 'DIBATALKAN'])) {
+                    // Tombol Hapus: Hanya untuk DRAFT
+                    if ($row->status_pembelian === 'DRAFT') {
                         $btnDelete = '<form action="' . route('admin.pembelian.destroy', $row->id) . '" method="POST" class="d-inline form-delete">
                                         ' . csrf_field() . '
                                         ' . method_field('DELETE') . '
                                         <button type="submit" class="btn btn-danger btn-sm" title="Hapus"><i class="bi bi-trash"></i></button>
                                     </form>';
                     }
+                    
+                    // Tombol Terima Barang: Jika status memungkinkan untuk penerimaan
+                    if (in_array($row->status_pembelian, ['DIPESAN', 'TIBA_SEBAGIAN', 'MENUNGGU_PEMBAYARAN'])) {
+                         $btnProsesPenerimaan = '<a href="' . route('gudang.penerimaan.create', ['pembelian' => $row->id]) . '" class="btn btn-success btn-sm me-1" title="Proses Penerimaan Barang">
+                                                    <i class="bi bi-box-arrow-in-down"></i>
+                                                </a>';
+                    }
 
-                    return $btnProsesPenerimaan . $btnShow . $btnEdit . $btnDelete;
+                    // Tombol Lunasi Pembayaran: Jika belum lunas DAN barang sudah diterima semua/selesai.
+                    if ($row->status_pembayaran === 'BELUM_LUNAS' && in_array($row->status_pembelian, ['MENUNGGU_PEMBAYARAN', 'SELESAI'])) {
+                        $btnLunasi = '<button type="button" class="btn btn-primary btn-sm btn-lunasi me-1" 
+                                        data-id-pembelian="' . $row->id . '" 
+                                        data-nomor-pembelian="' . $row->nomor_pembelian . '"
+                                        data-total-harga="' . $row->total_harga . '"
+                                        title="Lunasi Pembayaran">
+                                        <i class="bi bi-credit-card-2-front"></i>
+                                    </button>';
+                    }
+
+                    return $btnProsesPenerimaan . $btnLunasi . $btnShow . $btnEdit . $btnDelete;
                 })
                 // Memberitahu DataTables bahwa kolom ini berisi HTML mentah
                 ->rawColumns(['supplier_nama', 'status_pembelian_badge', 'status_pembayaran_badge', 'action'])
@@ -408,6 +407,46 @@ class PembelianController extends Controller
         }
     }
 
+
+    /**
+     * Handle AJAX request untuk melunasi pembayaran PO.
+     */
+    public function lunasiPembayaran(Request $request, Pembelian $pembelian)
+    {
+        // Validasi dasar
+        if ($pembelian->status_pembayaran !== 'BELUM_LUNAS') {
+            return response()->json(['success' => false, 'message' => 'Pembelian ini sudah lunas atau memiliki status pembayaran lain.'], 422);
+        }
+
+        $validated = $request->validate([
+            'metode_pembayaran' => 'required|string',
+            'tanggal_pelunasan' => 'required|date',
+        ]);
+
+        DB::beginTransaction();
+        try {
+            $pembelian->status_pembayaran = 'LUNAS';
+            $pembelian->metode_pembayaran = $validated['metode_pembayaran'];
+            $pembelian->dibayar_at = Carbon::parse($validated['tanggal_pelunasan']);
+
+            // Cek apakah barang sudah diterima semua, jika ya, ubah status pembelian menjadi SELESAI
+            $semuaDiterima = $pembelian->detailPembelian()->whereRaw('jumlah > jumlah_diterima')->doesntExist();
+            if ($semuaDiterima) {
+                $pembelian->status_pembelian = 'SELESAI';
+            }
+            
+            $pembelian->save();
+            DB::commit();
+
+            return response()->json(['success' => true, 'message' => 'Pembayaran untuk PO ' . $pembelian->nomor_pembelian . ' berhasil dilunasi.']);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => 'Terjadi kesalahan: ' . $e->getMessage()], 500);
+        }
+    }
+
+
     /**
      * Generate the next purchase order number based on date.
      * (Refactored logic for reuse)
@@ -489,4 +528,7 @@ class PembelianController extends Controller
         }
         return $prefix . str_pad($nextSequence, 3, '0', STR_PAD_LEFT);
     }
+
+    
+
 }

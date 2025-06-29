@@ -33,9 +33,7 @@
                 <div class="col-md-6">
                     <p><span class="detail-label">Pelanggan:</span> {{ $returPenjualan->detailPenjualan->penjualan->pelanggan->nama ?? 'Umum' }}</p>
                     <p><span class="detail-label">No. Nota Penjualan Asal:</span>
-                        <a href="{{ route('kasir.penjualan.nota', $returPenjualan->detailPenjualan->penjualan->id) }}" target="_blank">
-                            {{ $returPenjualan->detailPenjualan->penjualan->nomor_penjualan ?? '-' }} <i class="bi bi-box-arrow-up-right"></i>
-                        </a>
+                            {{ $returPenjualan->detailPenjualan->penjualan->nomor_penjualan ?? '-' }} 
                     </p>
                 </div>
             </div>
@@ -66,36 +64,12 @@
             @endif
 
             <div class="mt-3 text-center">
-                {{-- Tombol Cetak Bukti Retur (jika ada) --}}
-                {{-- <button type="button" class="btn btn-primary"><i class="bi bi-printer"></i> Cetak Bukti Retur</button> --}}
+                <a href="{{ route('kasir.penjualan.nota', $returPenjualan->detailPenjualan->penjualan->id) }}" target="_blank" class="btn btn-primary mt-2">
+                    {{ $returPenjualan->detailPenjualan->penjualan->nomor_penjualan ?? '-' }} <i class="bi bi-box-arrow-up-right"></i>
+                </a>
             </div>
         </div>
     </div>
 </div>
 @endsection
 
-
-<?php
-namespace App\Helpers;
-
-class ReturHelper {
-    public static function formatAlasanRetur($key) {
-        $options = [
-            'BARANG_RUSAK_PELANGGAN' => 'Barang Rusak Saat Diterima Pelanggan',
-            'SALAH_BARANG_TERKIRIM' => 'Salah Kirim Barang',
-            // ... tambahkan semua key dari $alasanReturOptions
-            'LAINNYA' => 'Lainnya',
-        ];
-        return $options[$key] ?? str_replace('_', ' ', ucwords(strtolower($key)));
-    }
-
-    public static function formatTindakanLanjut($key) {
-        $options = [
-            'DITERIMA_KEMBALI_PERLU_CEK' => 'Diterima Kembali (Perlu Pengecekan Admin)',
-            'DITERIMA_LANGSUNG_RUSAK' => 'Diterima Kembali (Langsung Catat Rusak)',
-            // ... tambahkan semua key dari $tindakanLanjutOptions
-        ];
-        return $options[$key] ?? str_replace('_', ' ', ucwords(strtolower($key)));
-    }
-}
-?>

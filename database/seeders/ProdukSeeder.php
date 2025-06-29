@@ -15,10 +15,6 @@ class ProdukSeeder extends Seeder
     public function run()
     {
         $this->command->info('Seeding Produk...');
-        Produk::factory()->count(2)->create(); 
-        Produk::factory()->count(2)->berserial()->create(); 
-        Produk::factory()->count(1)->tanpaSerial()->create(); 
-
         Produk::create([
             'id_merk' => null, 
             'kode_produk' => 'HJBL19',

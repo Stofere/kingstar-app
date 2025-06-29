@@ -23,10 +23,6 @@ class StokOpname extends Model
         'started_at' => 'datetime',
         'finished_at' => 'datetime',
     ];
-
-    // =====================================================================
-    // ## TAMBAHKAN FUNGSI-FUNGSI RELASI INI                          ##
-    // =====================================================================
     
     /**
      * Relasi ke Pengguna yang memulai sesi opname.
@@ -52,7 +48,4 @@ class StokOpname extends Model
         return $this->hasMany(DetailStokOpname::class, 'id_stok_opname');
     }
 
-    // =====================================================================
-    // ## AKHIR PENAMBAHAN                                              ##
-    // =====================================================================
 }

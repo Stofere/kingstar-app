@@ -60,47 +60,22 @@
                 </div>
 
                 <div class="form-section-retur-admin">
-                    <h5 class="mb-3">Keputusan Tindak Lanjut oleh Admin</h5>
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label for="tindakan_admin" class="form-label required-label">Pilih Tindakan Akhir:</label>
-                            <select class="form-select @error('tindakan_admin') is-invalid @enderror" id="tindakan_admin" name="tindakan_admin" required>
-                                <option value="">Pilih Keputusan...</option>
-                                @foreach ($tindakanAdminOptions as $key => $value)
-                                    <option value="{{ $key }}" {{ old('tindakan_admin') == $key ? 'selected' : '' }}>{{ $value }}</option>
-                                @endforeach
-                            </select>
-                            @error('tindakan_admin') <div class="invalid-feedback">{{ $message }}</div> @enderror
-                        </div>
+                   <div class="mb-3">
+                        <label for="tindakan_admin" class="form-label required-label">Keputusan Tindak Lanjut oleh Admin</label>
+                        <select class="form-select" id="tindakan_admin" name="tindakan_admin" required>
+                            <option value="">Pilih Tindakan...</option>
+                            @foreach($tindakanAdminOptions as $key => $value)
+                                <option value="{{ $key }}">{{ $value }}</option>
+                            @endforeach
+                        </select>
                     </div>
 
-                    <div id="detail-kembali-ke-stok-baik" class="row g-3 mt-2" style="display:none;">
-                         <div class="col-md-4">
-                            <label for="harga_beli_batch_retur" class="form-label">Harga Beli Batch Retur (Opsional):</label>
-                            <input type="number" class="form-control @error('harga_beli_batch_retur') is-invalid @enderror"
-                                   id="harga_beli_batch_retur" name="harga_beli_batch_retur"
-                                   value="{{ old('harga_beli_batch_retur', $returPenjualan->detailPenjualan->produk->harga_beli_terakhir_valid ?? 0) }}" min="0" step="any">
-                            @error('harga_beli_batch_retur') <div class="invalid-feedback">{{ $message }}</div> @enderror
-                            <small class="form-text text-muted">Default dari harga beli terakhir produk. Isi jika berbeda.</small>
-                        </div>
-                        <div class="col-md-4">
-                            <label for="lokasi_stok_retur" class="form-label">Lokasi Penyimpanan Baru:</label>
-                            <select class="form-select @error('lokasi_stok_retur') is-invalid @enderror" id="lokasi_stok_retur" name="lokasi_stok_retur">
-                                @foreach ($lokasiPenyimpanan as $key => $value)
-                                    <option value="{{ $key }}" {{ old('lokasi_stok_retur', 'GUDANG_RETUR_BAIK') == $key ? 'selected' : '' }}>{{ $value }}</option>
-                                @endforeach
-                            </select>
-                            @error('lokasi_stok_retur') <div class="invalid-feedback">{{ $message }}</div> @enderror
-                        </div>
-                        <div class="col-md-4">
-                            <label for="tipe_garansi_retur" class="form-label">Tipe Garansi Batch Retur:</label>
-                            <select class="form-select @error('tipe_garansi_retur') is-invalid @enderror" id="tipe_garansi_retur" name="tipe_garansi_retur">
-                                @foreach ($tipeGaransiOptions as $key => $value)
-                                    <option value="{{ $key }}" {{ old('tipe_garansi_retur', $returPenjualan->detailPenjualan->produk->tipe_garansi_default_saat_beli ?? 'NONE') == $key ? 'selected' : '' }}>{{ $value }}</option>
-                                @endforeach
-                            </select>
-                            @error('tipe_garansi_retur') <div class="invalid-feedback">{{ $message }}</div> @enderror
-                        </div>
+                    {{-- AREA BARU: Pilihan Lokasi (disembunyikan secara default) --}}
+                    <div class="mb-3" id="area-pilihan-lokasi" style="display: none;">
+                        <label for="lokasi_tujuan_retur" class="form-label required-label">Pilih Lokasi Penyimpanan Barang</label>
+                        <select class="form-select" id="lokasi_tujuan_retur" name="lokasi_tujuan_retur">
+                            {{-- Opsi akan diisi oleh JS --}}
+                        </select>
                     </div>
 
                     <div class="mt-3">
@@ -122,41 +97,53 @@
 @endsection
 
 @push('scripts')
-    <script src="//cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script>
-    $(document).ready(function() {
-        $('#tindakan_admin').on('change', function() {
-            if ($(this).val() === 'KEMBALI_KE_STOK_BAIK_ADMIN') {
-                $('#detail-kembali-ke-stok-baik').slideDown();
-                $('#harga_beli_batch_retur').prop('required', true);
-                $('#lokasi_stok_retur').prop('required', true);
-                $('#tipe_garansi_retur').prop('required', true);
-            } else {
-                $('#detail-kembali-ke-stok-baik').slideUp();
-                $('#harga_beli_batch_retur').prop('required', false);
-                $('#lokasi_stok_retur').prop('required', false);
-                $('#tipe_garansi_retur').prop('required', false);
-            }
-        }).trigger('change'); // Trigger saat halaman dimuat untuk set kondisi awal
+<script src="//cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+$(document).ready(function() {
+    $('#tindakan_admin').on('change', function() {
+        const tindakan = $(this).val();
+        const areaLokasi = $('#area-pilihan-lokasi');
+        const selectLokasi = $('#lokasi_tujuan_retur');
+        
+        // Opsi lokasi yang akan digunakan
+        const lokasiRusak = [
+            { value: 'GUDANG', text: 'Gudang (Area Retur/Rusak)' },
+            { value: 'TOKO', text: 'Toko (Area Retur/Rusak)' }
+        ];
+        const lokasiBaik = [
+            { value: 'GUDANG', text: 'Gudang' },
+            { value: 'TOKO', text: 'Toko' }
+        ];
 
-        $('#form-tindakan-admin-retur').on('submit', function(e) {
-            e.preventDefault(); // Cegah submit default
-            Swal.fire({
-                title: 'Konfirmasi Tindakan',
-                text: "Apakah Anda yakin dengan tindakan yang dipilih untuk retur ini?",
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonColor: '#28a745',
-                cancelButtonColor: '#6c757d',
-                confirmButtonText: 'Ya, Simpan Tindakan!',
-                cancelButtonText: 'Batal'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    $('#btn-simpan-tindakan-admin').prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Memproses...');
-                    $(this).off('submit').submit(); // Hapus handler, lalu submit form asli
-                }
+        selectLokasi.empty().prop('required', false); // Selalu reset saat berubah
+
+        if (tindakan === 'KEMBALI_KE_STOK_BAIK_ADMIN') {
+            $.each(lokasiBaik, function(i, loc) {
+                selectLokasi.append($('<option>', { value: loc.value, text: loc.text }));
             });
-        });
-    });
-    </script>
+            areaLokasi.slideDown();
+            selectLokasi.prop('required', true);
+        } else if (tindakan === 'CATAT_SEBAGAI_STOK_RUSAK_FINAL') {
+            $.each(lokasiRusak, function(i, loc) {
+                selectLokasi.append($('<option>', { value: loc.value, text: loc.text }));
+            });
+            areaLokasi.slideDown();
+            selectLokasi.prop('required', true);
+        } 
+        // --- INI PERBAIKANNYA: TAMBAHKAN KONDISI UNTUK RETUR SUPPLIER ---
+        else if (tindakan === 'AKAN_DIRETUR_KE_SUPPLIER') {
+            // Untuk retur ke supplier, kita juga menggunakan lokasi "Area Retur/Rusak"
+            $.each(lokasiRusak, function(i, loc) {
+                selectLokasi.append($('<option>', { value: loc.value, text: loc.text }));
+            });
+            areaLokasi.slideDown();
+            selectLokasi.prop('required', true);
+        }
+        // --- AKHIR PERBAIKAN ---
+        else {
+            areaLokasi.slideUp();
+        }
+    }).trigger('change'); // Trigger saat halaman dimuat untuk menangani old input
+});
+</script>
 @endpush

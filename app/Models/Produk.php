@@ -63,4 +63,11 @@ class Produk extends Model
     {
         return $this->hasMany(DetailPenjualan::class, 'id_produk');
     }
+    /**
+     * Relasi untuk mengambil HANYA SATU record detail pembelian terbaru.
+     */
+    public function detailPembelianTerbaru()
+    {
+        return $this->hasOne(DetailPembelian::class, 'id_produk')->latest('created_at');
+    }
 }

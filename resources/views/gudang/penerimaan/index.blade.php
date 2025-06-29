@@ -17,16 +17,9 @@
     <div class="card shadow-sm">
         <div class="card-header bg-light d-flex flex-wrap justify-content-between align-items-center">
             <h5 class="mb-0">Purchase Orders</h5>
-            <div class="btn-group">
-                <button type="button" class="btn btn-success btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="bi bi-plus-circle-fill me-1"></i> Buat Penerimaan Baru
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end">
-                    <li><a class="dropdown-item" href="{{ route('gudang.penerimaan.create', ['tipe' => 'MANUAL']) }}">Penerimaan Manual (Stok Lama)</a></li>
-                    <li><a class="dropdown-item" href="#">Penerimaan dari Retur (Segera Hadir)</a></li>
-                    {{-- Nanti link untuk retur bisa dibuat dinamis --}}
-                </ul>
-            </div>
+            <a href="{{ route('gudang.penerimaan.create', ['tipe' => 'MANUAL']) }}" class="btn btn-success btn-sm">
+                <i class="bi bi-plus-circle-fill me-1"></i> Buat Penerimaan Manual
+            </a>
         </div>
         <div class="card-body">
             @if(session('success'))

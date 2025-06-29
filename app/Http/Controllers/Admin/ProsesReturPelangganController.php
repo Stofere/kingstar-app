@@ -75,21 +75,22 @@ class ProsesReturPelangganController extends Controller
             return redirect()->route('admin.proses_retur_pelanggan.index')->with('error', 'Retur ini tidak memerlukan tindakan atau sudah pernah diproses sebelumnya oleh Admin.');
         }
 
+        // Eager loading
         $returPenjualan->load([
             'detailPenjualan.penjualan.pelanggan',
             'detailPenjualan.produk',
             'pengguna'
         ]);
 
+        // Opsi tindakan untuk dropdown di view
         $tindakanAdminOptions = [
             'KEMBALI_KE_STOK_BAIK_ADMIN' => 'Kembali ke Stok Aktif (Kondisi Baik)',
-            'CATAT_SEBAGAI_STOK_RUSAK_FINAL' => 'Catat Sebagai Stok Rusak Final (Tidak Dijual)',
+            'CATAT_SEBAGAI_STOK_RUSAK' => 'Catat Sebagai Stok Rusak Final (Tidak Dijual)',
             'AKAN_DIRETUR_KE_SUPPLIER' => 'Akan Diretur ke Supplier (Cacat Produksi)',
         ];
-        $lokasiPenyimpanan = ['GUDANG_UTAMA' => 'GUDANG UTAMA', 'GUDANG_RETUR_BAIK' => 'GUDANG RETUR BAIK', 'GUDANG_RUSAK' => 'GUDANG RUSAK'];
-        $tipeGaransiOptions = ['NONE' => 'NONE', 'RESMI' => 'RESMI', 'SELF_SERVICE' => 'SELF_SERVICE'];
+        
 
-        return view('admin.proses_retur_pelanggan.proses_form', compact('returPenjualan', 'tindakanAdminOptions', 'lokasiPenyimpanan', 'tipeGaransiOptions'));
+        return view('admin.proses_retur_pelanggan.proses_form', compact('returPenjualan', 'tindakanAdminOptions'));
     }
 
     /**
@@ -97,82 +98,106 @@ class ProsesReturPelangganController extends Controller
      */
     public function storeTindakanAdmin(Request $request, ReturPenjualan $returPenjualan)
     {
-        // Validasi Proses Ganda
-        $statusAwalKasir = ['DITERIMA_KEMBALI_PERLU_CEK'];
-        if (!in_array($returPenjualan->tindakan_lanjut, $statusAwalKasir)) {
-            return back()->with('error', 'Retur ini sudah pernah diproses oleh Admin sebelumnya.');
-        }
-
+        // 1. Validasi Input dari Form
         $validated = $request->validate([
             'tindakan_admin' => ['required', 'string', Rule::in([
-                'KEMBALI_KE_STOK_BAIK',
-                'KEMBALI_KE_STOK_RUSAK',
+                'KEMBALI_KE_STOK_BAIK_ADMIN',
+                'CATAT_SEBAGAI_STOK_RUSAK_FINAL',
                 'AKAN_DIRETUR_KE_SUPPLIER'
             ])],
+            // Lokasi sekarang wajib untuk SEMUA tindakan
+            'lokasi_tujuan_retur' => ['required', 'string'],
             'catatan_admin_proses' => 'nullable|string',
         ]);
         
         DB::beginTransaction();
         try {
-            // 1. Update Nota Retur Penjualan
+            // 2. Update Nota Retur Penjualan terlebih dahulu
             $returPenjualan->tindakan_lanjut = $validated['tindakan_admin'];
-            $returPenjualan->catatan_internal_retur = $validated['catatan_admin_proses'];
+            $catatanInternal = $returPenjualan->catatan_internal_retur ? $returPenjualan->catatan_internal_retur . "\n" : "";
+            $catatanInternal .= "[ADMIN] " . ($validated['catatan_admin_proses'] ?? 'Tindakan diproses.');
+            $returPenjualan->catatan_internal_retur = $catatanInternal;
             $returPenjualan->save();
-
-            $detailPenjualanAsal = $returPenjualan->detailPenjualan()->with('produk', 'penjualan.pelanggan')->firstOrFail();
+            
+            // 3. Ambil semua data yang dibutuhkan dari relasi
+            $detailPenjualanAsal = $returPenjualan->detailPenjualan()
+                                                  ->with(['produk', 'penjualan.pelanggan', 'stokAlokasi.stokBarang'])
+                                                  ->firstOrFail();
             $produk = $detailPenjualanAsal->produk;
             
-            // =====================================================================
-            // ## FIX: Logika diubah agar SELALU mencatat stok masuk dari pelanggan ##
-            // =====================================================================
+            $alokasiAsal = $detailPenjualanAsal->stokAlokasi->first();
+            if (!$alokasiAsal || !$alokasiAsal->stokBarang) {
+                throw new \Exception("Tidak dapat melacak batch stok asal untuk item retur.");
+            }
+            $stokBarangAsal = $alokasiAsal->stokBarang;
+            $hargaBeliAsli = $stokBarangAsal->harga_beli;
+            $idSupplierAsli = $stokBarangAsal->id_supplier;
+            $idDetailPembelianAsli = $stokBarangAsal->id_detail_pembelian;
             
-            // Tentukan kondisi dan lokasi berdasarkan keputusan Admin
-            $kondisiStokBaru = 'RUSAK'; // Default untuk 'AKAN_DIRETUR_KE_SUPPLIER'
-            $lokasiStokBaru = 'GUDANG_RETUR';
-            if ($validated['tindakan_admin'] === 'KEMBALI_KE_STOK_BAIK') {
+            // 4. Tentukan Kondisi & Lokasi berdasarkan Pilihan Admin
+            $kondisiStokBaru = 'BAIK';
+            $lokasiStokBaru = $validated['lokasi_tujuan_retur'];
+
+            if ($validated['tindakan_admin'] === 'KEMBALI_KE_STOK_BAIK_ADMIN') {
                 $kondisiStokBaru = 'BAIK';
-                $lokasiStokBaru = 'TOKO'; // atau GUDANG, tergantung kebijakan
+            } elseif ($validated['tindakan_admin'] === 'CATAT_SEBAGAI_STOK_RUSAK_FINAL') {
+                $kondisiStokBaru = 'RUSAK';
+            } elseif ($validated['tindakan_admin'] === 'AKAN_DIRETUR_KE_SUPPLIER') {
+                $kondisiStokBaru = 'RUSAK';
+                // Bangun nama lokasi dinamis
+                $lokasiStokBaru = rtrim($validated['lokasi_tujuan_retur'], '_') . '_RETUR_SUPPLIER';
             }
 
-            // 2. Buat batch stok baru untuk menampung barang retur
+            // 5. Buat Batch Stok Baru
             $stokBaru = StokBarang::create([
-                'id_produk' => $produk->id,
-                'jumlah' => $returPenjualan->jumlah_retur,
-                'id_supplier' => $detailPenjualanAsal->stokAlokasi->first()->stokBarang->id_supplier ?? null, // Ambil supplier dari batch asal penjualan
-                'diterima_at' => now(),
-                'kondisi' => $kondisiStokBaru,
-                'lokasi' => $lokasiStokBaru,
-                'harga_beli' => 0,
+                'id_produk'             => $produk->id,
+                'id_detail_pembelian'   => $idDetailPembelianAsli,
+                'id_supplier'           => $idSupplierAsli,
+                'harga_beli'            => $hargaBeliAsli,
+                'jumlah'                => $returPenjualan->jumlah_retur,
+                'diterima_at'           => now(),
+                'kondisi'               => $kondisiStokBaru,
+                'lokasi'                => $lokasiStokBaru,
+                'tipe_stok'             => 'RETUR_DARI_PELANGGAN'
             ]);
             
-            // 3. Catat ke Riwayat Pergerakan Stok
+            // 6. Catat di Riwayat Pergerakan Stok
             $keteranganRiwayat = 'Retur dari Pelanggan (' . ($detailPenjualanAsal->penjualan->pelanggan->nama ?? 'Umum') . '). Tindakan: ' . str_replace('_', ' ', $validated['tindakan_admin']);
+            $saldoSebelumnya = RiwayatPergerakanStok::where('id_produk', $produk->id)->lockForUpdate()->latest('id')->value('saldo_setelah_transaksi') ?? 0;
             
             if ($produk->memiliki_serial && !empty($returPenjualan->nomor_seri_diretur)) {
                 $serials = explode(',', str_replace(' ', '', $returPenjualan->nomor_seri_diretur));
+                $saldoBerjalan = $saldoSebelumnya;
                 foreach ($serials as $sn) {
-                    $saldoTerakhir = RiwayatPergerakanStok::where('id_produk', $produk->id)->lockForUpdate()->latest('id')->first();
-                    $saldoSebelumnya = $saldoTerakhir->saldo_setelah_transaksi ?? 0;
+                    $saldoBerjalan += 1;
                     RiwayatPergerakanStok::create([
-                        'id_produk' => $produk->id, 'id_stok_barang_terkait' => $stokBaru->id,
-                        'nomor_seri' => trim($sn), 'tipe_transaksi' => 'RETUR_PELANGGAN',
-                        'jumlah_masuk' => 1, 'jumlah_keluar' => 0,
-                        'saldo_setelah_transaksi' => $saldoSebelumnya + 1,
-                        'id_referensi' => $returPenjualan->id, 'tipe_referensi' => ReturPenjualan::class,
-                        'tanggal_transaksi' => now(), 'keterangan' => $keteranganRiwayat,
+                        'id_produk' => $produk->id,
+                        'id_stok_barang_terkait' => $stokBaru->id,
+                        'nomor_seri' => trim($sn),
+                        'tipe_transaksi' => 'RETUR_PELANGGAN',
+                        'jumlah_masuk' => 1,
+                        'jumlah_keluar' => 0,
+                        'saldo_setelah_transaksi' => $saldoBerjalan,
+                        'id_referensi' => $returPenjualan->id,
+                        'tipe_referensi' => get_class($returPenjualan),
+                        'tanggal_transaksi' => now(),
+                        'keterangan' => $keteranganRiwayat,
                         'id_pengguna' => Auth::id(),
                     ]);
                 }
             } else { // Untuk produk non-serial
-                $saldoTerakhir = RiwayatPergerakanStok::where('id_produk', $produk->id)->lockForUpdate()->latest('id')->first();
-                $saldoSebelumnya = $saldoTerakhir->saldo_setelah_transaksi ?? 0;
                 RiwayatPergerakanStok::create([
-                    'id_produk' => $produk->id, 'id_stok_barang_terkait' => $stokBaru->id,
-                    'tipe_transaksi' => 'RETUR_PELANGGAN', 'jumlah_masuk' => $returPenjualan->jumlah_retur,
+                    'id_produk' => $produk->id,
+                    'id_stok_barang_terkait' => $stokBaru->id,
+                    'nomor_seri' => null,
+                    'tipe_transaksi' => 'RETUR_PELANGGAN',
+                    'jumlah_masuk' => $returPenjualan->jumlah_retur,
                     'jumlah_keluar' => 0,
                     'saldo_setelah_transaksi' => $saldoSebelumnya + $returPenjualan->jumlah_retur,
-                    'id_referensi' => $returPenjualan->id, 'tipe_referensi' => ReturPenjualan::class,
-                    'tanggal_transaksi' => now(), 'keterangan' => $keteranganRiwayat,
+                    'id_referensi' => $returPenjualan->id,
+                    'tipe_referensi' => get_class($returPenjualan),
+                    'tanggal_transaksi' => now(),
+                    'keterangan' => $keteranganRiwayat,
                     'id_pengguna' => Auth::id(),
                 ]);
             }
@@ -184,5 +209,23 @@ class ProsesReturPelangganController extends Controller
             DB::rollBack();
             return redirect()->back()->with('error', 'Terjadi kesalahan fatal: ' . $e->getMessage());
         }
+    }
+    
+    /**
+     * Menampilkan halaman detail dari sebuah transaksi retur penjualan.
+     *
+     * @param  \App\Models\ReturPenjualan  $returPenjualan
+     * @return \Illuminate\View\View
+     */
+    public function showDetail(ReturPenjualan $returPenjualan)
+    {
+        // Eager load semua relasi yang dibutuhkan untuk ditampilkan
+        $returPenjualan->load([
+            'detailPenjualan.penjualan.pelanggan', // Ambil nota penjualan asal & pelanggannya
+            'detailPenjualan.produk', // Ambil produk yang diretur
+            'pengguna' // Ambil kasir yang memproses retur
+        ]);
+
+        return view('admin.proses_retur_pelanggan.show', compact('returPenjualan'));
     }
 }

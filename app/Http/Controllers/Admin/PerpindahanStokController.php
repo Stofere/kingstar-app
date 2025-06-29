@@ -136,26 +136,36 @@ class PerpindahanStokController extends Controller
     public function searchBatchAjax(Request $request)
     {
         $term = $request->input('q', '');
-        $batches = StokBarang::with('produk:id,nama,kode_produk,memiliki_serial')
+        $batches = StokBarang::with(['produk:id,nama,kode_produk,memiliki_serial', 'supplier:id,nama'])
             ->where('jumlah', '>', 0)
             ->where(function ($q) use ($term) {
                 $q->where('id', 'LIKE', "%{$term}%")
                   ->orWhereHas('produk', function ($prodQ) use ($term) {
                       $prodQ->where('nama', 'LIKE', "%{$term}%")
                             ->orWhere('kode_produk', 'LIKE', "%{$term}%");
+                   })
+                  // Tambahkan kemampuan mencari berdasarkan nama supplier
+                  ->orWhereHas('supplier', function ($supQ) use ($term) {
+                      $supQ->where('nama', 'LIKE', "%{$term}%");
                   });
             })
             ->limit(15)->get();
 
         $results = $batches->map(function ($batch) {
-            $text = "Batch ID: {$batch->id} - {$batch->produk->nama} | Lokasi: {$batch->lokasi} | Sisa: {$batch->jumlah}";
+            
+            $supplierInfo = $batch->supplier ? $batch->supplier->nama : 'Penerimaan Manual';
+            $tipeInfo = ($batch->tipe_stok === 'KONSINYASI') ? ' | Konsinyasi' : '';
+            $kondisiInfo = ($batch->kondisi !== 'BAIK') ? " | {$batch->kondisi}" : '';
+            
+            $text = "{$batch->produk->nama} (Batch #{$batch->id}) | Sumber: {$supplierInfo}{$tipeInfo}{$kondisiInfo} | Sisa: {$batch->jumlah}";
             return [
-                'id' => $batch->id,
-                'text' => $text,
-                'sisa' => $batch->jumlah,
-                'lokasi_asal' => $batch->lokasi,
-                'has_serial' => (bool)$batch->produk->memiliki_serial, // <-- Tambahkan info ini
-            ];
+            'id' => $batch->id,
+            'text' => $text,
+            'sisa' => $batch->jumlah,
+            'lokasi_asal' => $batch->lokasi,
+            'has_serial' => (bool)$batch->produk->memiliki_serial,
+            'supplier_nama' => $batch->supplier->nama ?? 'N/A',
+        ];
         });
 
         return response()->json(['results' => $results]);

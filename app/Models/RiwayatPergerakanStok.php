@@ -9,9 +9,9 @@ class RiwayatPergerakanStok extends Model
 {
     use HasFactory;
 
+    public $timestamps = false; // Karena kita hanya pakai created_at manual
     protected $table = 'riwayat_pergerakan_stok';
-
-    protected $guarded = ['id']; // Izinkan semua field untuk diisi
+    protected $guarded = ['id']; // Atau gunakan $fillable
 
     protected $casts = [
         'tanggal_transaksi' => 'datetime',
@@ -23,8 +23,7 @@ class RiwayatPergerakanStok extends Model
         return $this->belongsTo(Produk::class, 'id_produk');
     }
 
-    // Relasi ke Batch Stok
-    public function stokBarang()
+    public function stokBarangTerkait()
     {
         return $this->belongsTo(StokBarang::class, 'id_stok_barang_terkait');
     }
@@ -35,9 +34,10 @@ class RiwayatPergerakanStok extends Model
         return $this->belongsTo(Pengguna::class, 'id_pengguna');
     }
 
-    // Relasi Polymorphic ke dokumen sumber (Nota Penjualan, Pembelian, dll)
-    public function referensi()
+   public function referensi()
     {
-        return $this->morphTo();
+        // 'id_referensi' adalah nama kolom untuk ID
+        // 'tipe_referensi' adalah nama kolom untuk nama class Model
+        return $this->morphTo(null, 'tipe_referensi', 'id_referensi');
     }
 }

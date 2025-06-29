@@ -3,9 +3,6 @@
 @section('title', 'Form Retur Penjualan: ' . $penjualan->nomor_penjualan)
 
 @push('styles')
-    {{-- Jika perlu Select2 atau style khusus --}}
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
     <style>
         .item-retur-card { margin-bottom: 1.5rem; border-left: 5px solid #0dcaf0; }
         .serial-checkbox-list .form-check { margin-bottom: 0.25rem; }
@@ -124,7 +121,7 @@
                             </div>
                             @endif
                             <div class="mt-2">
-                                <label for="items_retur_{{ $index }}_catatan_tambahan_item" class="form-label">Catatan Tambahan Item (Opsional):</label>
+                                <label for="items_retur_{{ $index }}_catatan_tambahan_item" class="form-label">Catatan dari Pelanggan Mengenai Item (Opsional):</label>
                                 <textarea class="form-control form-control-sm" id="items_retur_{{ $index }}_catatan_tambahan_item" name="items_retur[{{ $index }}][catatan_tambahan_item]" rows="1">{{ old('items_retur.'.$index.'.catatan_tambahan_item') }}</textarea>
                             </div>
                         </div>
@@ -132,7 +129,7 @@
                 @endforeach
 
                 <div class="mt-3">
-                    <label for="catatan_global_retur" class="form-label">Catatan Global Retur (Opsional):</label>
+                    <label for="catatan_global_retur" class="form-label">Catatan internal oleh staf terkait proses retur ini secara keseluruhan (Opsional):</label>
                     <textarea class="form-control" id="catatan_global_retur" name="catatan_global_retur" rows="2">{{ old('catatan_global_retur') }}</textarea>
                 </div>
 

@@ -38,156 +38,50 @@
     <link href="{{ mix('css/app.css') }}" rel="stylesheet">
 
     {{-- Tempat untuk menambahkan CSS spesifik per halaman --}}
-    @stack('styles')
+     @stack('styles')
 
-    {{-- Style tambahan inline untuk layout --}}
     <style>
-        html, body {
-            height: 100%;
-        }
-        body {
-            display: flex;
-            flex-direction: column;
-            font-size: 0.95rem; /* Sedikit perkecil font dasar untuk tampilan lebih padat */
-            background-color: #f4f6f9; /* Warna latar yang sedikit berbeda, lebih ke abu-abu muda */
-        }
-        #app {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-        }
-        .navbar {
-            /* border-bottom: 1px solid #dee2e6; // Dihilangkan karena sudah ada shadow-sm */
-            z-index: 1030;
-        }
-        .navbar-brand img {
-            max-height: 30px; /* Sedikit lebih kecil agar pas */
-            margin-right: 0.5rem;
-        }
-        .nav-link {
-            padding-top: 0.6rem; /* Spasi vertikal nav-link */
-            padding-bottom: 0.6rem;
-        }
-        .nav-link.active, .dropdown-item.active {
-            font-weight: 600; /* Lebih tebal untuk item aktif */
-        }
-        .dropdown-menu {
-            font-size: 0.9rem; /* Font dropdown sedikit lebih kecil */
-        }
-        main.py-4 {
-            padding-top: 1.5rem !important; /* Override py-4 jika perlu */
-            padding-bottom: 2rem !important; /* Beri ruang lebih di bawah */
-            flex-grow: 1;
-        }
-        .container, .container-fluid { /* Default padding untuk container konten */
-            padding-left: 15px;
-            padding-right: 15px;
-        }
-        .card {
-            border: none; /* Hilangkan border default card agar lebih menyatu dengan shadow */
-            border-radius: 0.375rem; /* Radius standar Bootstrap */
-        }
-        .card-header {
-            /* background-color: #f8f9fa; */ /* Warna header card yang lebih soft */
-            border-bottom: 1px solid #e9ecef;
-            font-weight: 500;
-        }
-        .footer {
-            background-color: #ffffff; /* Footer putih dengan border atas */
-            border-top: 1px solid #dee2e6;
-            padding: 1rem 0;
-            font-size: 0.85em;
-            margin-top: auto; /* Mendorong footer ke bawah */
-            color: #6c757d;
-        }
-        /* Penyesuaian z-index untuk komponen yang mungkin tumpang tindih */
-        .select2-container--open { z-index: 10050 !important; } /* Lebih tinggi dari modal Bootstrap default (1050) */
-        .swal2-container { z-index: 10060 !important; } /* Lebih tinggi dari Select2 */
-        .litepicker { z-index: 10055 !important; } /* Sesuaikan agar di atas elemen lain tapi mungkin di bawah swal */
-
-        /* Responsivitas untuk tabel agar tidak overflow di mobile */
-        .table-responsive {
-            /* overflow-x: auto; -> ini sudah default dari Bootstrap */
-            -webkit-overflow-scrolling: touch; /* Scrolling halus di iOS */
-        }
+        /* Style global Anda bisa tetap di sini atau dipindah ke file SASS terpisah */
+        html, body { height: 100%; }
+        body { display: flex; flex-direction: column; font-size: 0.95rem; background-color: #f4f6f9; }
+        #app { flex: 1; display: flex; flex-direction: column; }
+        .navbar { z-index: 1030; }
+        .navbar-brand img { max-height: 30px; margin-right: 0.5rem; }
+        main.py-4 { padding-top: 1.5rem !important; padding-bottom: 2rem !important; flex-grow: 1; }
+        .footer { background-color: #ffffff; border-top: 1px solid #dee2e6; padding: 1rem 0; font-size: 0.85em; margin-top: auto; color: #6c757d; }
+        /* z-index overrides */
+        .select2-container--open { z-index: 9999 !important; }
+        .swal2-container { z-index: 10000 !important; }
+        .litepicker { z-index: 9998 !important; }
     </style>
 </head>
 <body>
     <div id="app">
         <nav class="navbar navbar-expand-md navbar-light bg-white shadow-sm sticky-top">
-            <div class="container"> {{-- Atau container-fluid jika ingin navbar full-width --}}
+            <div class="container-fluid"> {{-- Ubah ke fluid untuk layout lebih lebar --}}
                 <a class="navbar-brand d-flex align-items-center" href="{{ Auth::check() ? route(strtolower(Auth::user()->role) . '.dashboard') : url('/') }}">
                     <img src="{{ asset('images/kingstar_logo.png') }}" alt="{{ config('app.name', 'CV Kingstar') }} Logo">
-                    <span class="d-none d-sm-inline fw-bold ms-1">{{ config('app.name', 'Kingstar System') }}</span>
+                    <span class="d-none d-sm-inline fw-bold ms-1">{{ config('app.name', 'Kingstar') }}</span>
                 </a>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="{{ __('Toggle navigation') }}">
                     <span class="navbar-toggler-icon"></span>
                 </button>
 
                 <div class="collapse navbar-collapse" id="navbarSupportedContent">
-                    <!-- Left Side Of Navbar -->
+                    <!-- Navigasi Dimuat Berdasarkan Peran -->
                     <ul class="navbar-nav me-auto mb-2 mb-md-0">
                         @auth
                             @if(Auth::user()->role == 'ADMIN')
-                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('admin.dashboard') ? 'active' : '' }}" href="{{ route('admin.dashboard') }}"><i class="bi bi-speedometer2 me-1"></i> Dashboard</a></li>
-                                <li class="nav-item dropdown">
-                                     <a class="nav-link dropdown-toggle {{ str_contains(Route::currentRouteName(), 'admin.produk') || str_contains(Route::currentRouteName(), 'admin.merk') || str_contains(Route::currentRouteName(), 'admin.supplier') || str_contains(Route::currentRouteName(), 'admin.pelanggan') ? 'active' : '' }}" href="#" data-bs-toggle="dropdown"><i class="bi bi-stack me-1"></i> Master</a>
-                                     <ul class="dropdown-menu">
-                                         <li><a class="dropdown-item {{ request()->routeIs('admin.produk.*') ? 'active' : '' }}" href="{{ route('admin.produk.index') }}">Produk</a></li>
-                                         <li><a class="dropdown-item {{ request()->routeIs('admin.merk.*') ? 'active' : '' }}" href="{{ route('admin.merk.index') }}">Merk</a></li>
-                                         <li><a class="dropdown-item {{ request()->routeIs('admin.supplier.*') ? 'active' : '' }}" href="{{ route('admin.supplier.index') }}">Supplier</a></li>
-                                         <li><a class="dropdown-item {{ request()->routeIs('admin.pelanggan.*') ? 'active' : '' }}" href="{{ route('admin.pelanggan.index') }}">Pelanggan</a></li>
-                                     </ul>
-                                </li>
-                                 <li class="nav-item"><a class="nav-link {{ request()->routeIs('admin.pengguna.*') ? 'active' : '' }}" href="{{ route('admin.pengguna.index') }}"><i class="bi bi-people me-1"></i> Pengguna</a></li>
-                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('admin.pembelian.*') ? 'active' : '' }}" href="{{ route('admin.pembelian.index')}}"><i class="bi bi-basket3 me-1"></i> Pembelian</a></li>
-                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('admin.retur_pembelian.*') ? 'active' : '' }}" href="{{ route('admin.retur_pembelian.index') }}"><i class="bi bi-upload me-1"></i> Retur Pembelian</a></li>
-                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('admin.proses_retur_pelanggan.*') ? 'active' : '' }}" href="{{ route('admin.proses_retur_pelanggan.index') }}"><i class="bi bi-person-gear me-1"></i> Proses Retur Pelanggan</a></li>
-                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('admin.pesan_barang_alokasi.*') ? 'active' : '' }}" href="{{ route('admin.pesan_barang_alokasi.index') }}"><i class="bi bi-clipboard-data me-1"></i> Alokasi Pesanan</a></li>
-                                <li class="nav-item dropdown">
-                                    <a class="nav-link dropdown-toggle {{ str_contains(Route::currentRouteName(), 'admin.laporan') || str_contains(Route::currentRouteName(), 'admin.laporan.stok') ? 'active' : '' }}" href="#" data-bs-toggle="dropdown"><i class="bi bi-file-earmark-bar-graph me-1"></i> Laporan</a>
-                                    <ul class="dropdown-menu">
-                                        <li><a class="dropdown-item {{ request()->routeIs('admin.laporan.penjualan.*') ? 'active' : '' }}" href="{{ route('admin.laporan.penjualan.index') }}">Penjualan</a></li>
-                                        <li><a class="dropdown-item {{ request()->routeIs('admin.laporan.pembelian.*') ? 'active' : '' }}" href="{{ route('admin.laporan.pembelian.index') }}">Pembelian</a></li>
-                                        <li><a class="dropdown-item {{ request()->routeIs('admin.laporan.stok.*') ? 'active' : '' }}" href="{{ route('admin.laporan.stok.ringkasan_produk') }}">Stok</a></li>
-                                    </ul>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link {{ request()->routeIs('gudang.stok-opname.*') ? 'active' : '' }}" href="{{ route('gudang.stok-opname.index') }}">
-                                        <i class="bi bi-clipboard-data"></i> Stok Opname
-                                    </a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link {{ request()->routeIs('perpindahan_stok.*') ? 'active' : '' }}" href="{{ route('perpindahan-stok.index') }}">
-                                        <i class="bi bi-truck"></i> Perpindahan Stok
-                                    </a>
-                                </li>
-
+                                @include('layouts.partials._nav_admin')
                             @elseif(Auth::user()->role == 'KASIR')
-                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('kasir.dashboard') ? 'active' : '' }}" href="{{ route('kasir.dashboard') }}"><i class="bi bi-speedometer2 me-1"></i> Dashboard</a></li>
-                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('kasir.penjualan.create') ? 'active' : '' }}" href="{{ route('kasir.penjualan.create') }}"><i class="bi bi-cart-plus me-1"></i> Penjualan Baru</a></li>
-                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('kasir.pesan_barang_selesai.*') ? 'active' : '' }}" href="{{ route('kasir.pesan_barang_selesai.index') }}"><i class="bi bi-box-seam me-1"></i> Selesaikan Pesanan</a></li>
-                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('kasir.retur_penjualan.*') ? 'active' : '' }}" href="{{ route('kasir.retur_penjualan.index') }}"><i class="bi bi-arrow-return-left me-1"></i> Retur Penjualan</a></li>
-                                {{-- <li class="nav-item"><a class="nav-link" href="#"><i class="bi bi-calendar-day me-1"></i> Transaksi Hari Ini</a></li> --}}
-
+                                @include('layouts.partials._nav_kasir')
                             @elseif(Auth::user()->role == 'GUDANG')
-                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('gudang.dashboard') ? 'active' : '' }}" href="{{ route('gudang.dashboard') }}"><i class="bi bi-speedometer2 me-1"></i> Dashboard</a></li>
-                                <li class="nav-item"><a class="nav-link {{ request()->routeIs('gudang.penerimaan.*') ? 'active' : '' }}" href="{{ route('gudang.penerimaan.index') }}"><i class="bi bi-box-arrow-in-down me-1"></i> Penerimaan Barang</a></li>
-                                <li class="nav-item">
-                                    <a class="nav-link {{ request()->routeIs('gudang.stok-opname.*') ? 'active' : '' }}" href="{{ route('gudang.stok-opname.index') }}">
-                                        <i class="bi bi-clipboard-data"></i> Stok Opname
-                                    </a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link {{ request()->routeIs('perpindahan_stok.*') ? 'active' : '' }}" href="{{ route('perpindahan-stok.index') }}">
-                                        <i class="bi bi-truck"></i> Perpindahan Stok
-                                    </a>
-                                </li>
+                                @include('layouts.partials._nav_gudang')
                             @endif
                         @endauth
                     </ul>
 
-                    <!-- Right Side Of Navbar -->
+                    <!-- Navigasi Kanan (Profil Pengguna) -->
                     <ul class="navbar-nav ms-auto">
                         @guest
                             @if (Route::has('login'))
@@ -214,7 +108,6 @@
         </nav>
 
         <main class="py-4"> {{-- py-4 adalah padding atas & bawah dari Bootstrap --}}
-            {{-- Container akan ada di dalam @yield('content') atau di view anak --}}
             @yield('content')
         </main>
 

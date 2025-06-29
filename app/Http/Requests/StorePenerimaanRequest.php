@@ -24,11 +24,6 @@ class StorePenerimaanRequest extends FormRequest
                 'nullable',
                 'exists:pembelian,id'
             ],
-            'id_supplier_manual' => [ // Opsional untuk manual
-                // Rule::requiredIf(fn () => $this->input('tipe_penerimaan') === 'MANUAL' && $this->filled('id_supplier_manual')), // Hapus jika benar-benar opsional
-                'nullable',
-                'exists:supplier,id'
-            ],
             'diterima_at' => ['required', 'date'],
             'no_surat_jalan' => ['nullable', 'string', 'max:100'],
             'items' => ['required', 'array', 'min:1'], // Minimal 1 item di-submit
@@ -42,10 +37,27 @@ class StorePenerimaanRequest extends FormRequest
             $totalItemsDiterima += $jumlahDiterimaSekarang;
 
             $rules["items.{$key}.id_produk"] = ['required', 'exists:produk,id'];
-            $rules["items.{$key}.jumlah_diterima_sekarang"] = ['required', 'integer', 'min:0']; // Boleh 0, tapi akan di-skip di controller
+            $rules["items.{$key}.jumlah_diterima_sekarang"] = ['required', 'integer', 'min:0'];
             $rules["items.{$key}.lokasi"] = ['required', Rule::in(['GUDANG', 'TOKO'])];
-            $rules["items.{$key}.kondisi"] = ['required', Rule::in(['BAIK', 'RUSAK_MINOR', 'RUSAK', 'SERVIS', 'KOMPLAIN_SUPPLIER'])];
+            $rules["items.{$key}.kondisi"] = ['required', Rule::in(['BAIK', 'RUSAK', 'SERVIS', 'KOMPLAIN_SUPPLIER'])]; // Sesuaikan dengan opsi Anda
             $rules["items.{$key}.tipe_garansi"] = ['required', Rule::in(['NONE', 'RESMI', 'SELF_SERVICE'])];
+            
+            // Aturan untuk tipe_stok (khusus manual)
+            if ($this->input('tipe_penerimaan') === 'MANUAL') {
+                 $rules["items.{$key}.tipe_stok"] = ['required', 'string', Rule::in(['REGULER', 'KONSINYASI'])];
+            } else {
+                 $rules["items.{$key}.tipe_stok"] = ['nullable', 'string', Rule::in(['REGULER', 'KONSINYASI'])];
+            }
+            
+            // --- INI KUNCINYA ---
+            // Supplier hanya wajib jika tipe penerimaan adalah MANUAL dan tipe stok adalah KONSINYASI
+            $isKonsinyasiManual = $this->input('tipe_penerimaan') === 'MANUAL' && ($item['tipe_stok'] ?? '') === 'KONSINYASI';
+            $rules['id_supplier_manual'] = [
+                Rule::requiredIf($isKonsinyasiManual),
+                'nullable',
+                'exists:supplier,id'
+            ];
+
 
             // Validasi jumlah diterima sekarang vs sisa PO
             if ($this->input('tipe_penerimaan') === 'PO' && isset($item['id_detail_pembelian'])) {
@@ -104,6 +116,9 @@ class StorePenerimaanRequest extends FormRequest
         $messages = [
             'items_diterima_check.required' => 'Minimal ada satu item yang diterima dengan jumlah lebih dari 0.',
         ];
+        $messages['id_supplier_manual.required'] = 'Supplier wajib dipilih untuk barang konsinyasi.';
+        $messages['items_diterima_check.required'] = 'Minimal ada satu item yang diterima dengan jumlah lebih dari 0.';
+
         foreach ($this->input('items', []) as $key => $item) {
             $itemNumber = $key + 1;
             $messages["items.{$key}.id_produk.required"] = "Produk wajib dipilih untuk item ke-{$itemNumber}.";
@@ -115,6 +130,7 @@ class StorePenerimaanRequest extends FormRequest
             $messages["items.{$key}.lokasi.required"] = "Lokasi wajib dipilih untuk item ke-{$itemNumber}.";
             $messages["items.{$key}.kondisi.required"] = "Kondisi wajib dipilih untuk item ke-{$itemNumber}.";
             $messages["items.{$key}.tipe_garansi.required"] = "Tipe garansi wajib dipilih untuk item ke-{$itemNumber}.";
+            $messages["items.{$key}.tipe_stok.required"] = "Tipe Stok wajib dipilih untuk item ke-{$itemNumber} pada penerimaan manual.";
 
             $messages["items.{$key}.nomor_seri.required"] = "Nomor seri wajib diisi untuk item ke-{$itemNumber} (sesuai jumlah diterima).";
             $messages["items.{$key}.nomor_seri.array"] = "Format nomor seri untuk item ke-{$itemNumber} tidak valid.";

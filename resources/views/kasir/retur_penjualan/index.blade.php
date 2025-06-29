@@ -1,11 +1,8 @@
-{{-- kasir/retur_penjualan/index.blade.php --}}
 @extends('layouts.app')
 
 @section('title', 'Daftar Retur Penjualan')
 
 @push('styles')
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css">
-    <link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.bootstrap5.min.css">
     <style>
         #retur-penjualan-table th, #retur-penjualan-table td {
             vertical-align: middle;
@@ -67,11 +64,6 @@
 @endsection
 
 @push('scripts')
-    {{-- Pastikan jQuery, DataTables, DataTables BS5, DataTables Responsive sudah di-include --}}
-    <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.7/js/dataTables.bootstrap5.min.js"></script>
-    <script src="https://cdn.datatables.net/responsive/2.5.0/js/dataTables.responsive.min.js"></script>
-    <script src="https://cdn.datatables.net/responsive/2.5.0/js/responsive.bootstrap5.min.js"></script>
 
     <script>
         $(document).ready(function() {
@@ -112,3 +104,4 @@
             });
         });
     </script>
+@endpush

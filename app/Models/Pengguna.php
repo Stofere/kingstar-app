@@ -89,9 +89,4 @@ class Pengguna extends Authenticatable // Ganti extends Model jika tidak untuk a
         return $this->hasMany(StokOpname::class, 'id_pengguna_selesai');
     }
 
-    // Relasi: Pengguna bisa melakukan banyak penyesuaian stok
-    public function penyesuaianStok()
-    {
-        return $this->hasMany(PenyesuaianStok::class, 'id_pengguna');
-    }
 }

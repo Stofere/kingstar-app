@@ -3,9 +3,6 @@
 @section('title', 'Kelola Produk')
 
 @push('styles')
-    {{-- DataTables CSS --}}
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/dataTables.bootstrap5.min.css">
-    <link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.bootstrap5.min.css">
     <style>
         #produk-table img { max-width: 100%; height: auto; max-height: 50px; object-fit: contain; cursor: pointer; }
         #produk-table .action-buttons form { margin-bottom: 0; }
@@ -17,6 +14,33 @@
 @section('content')
 <div class="container">
     <h1 class="mb-4">Kelola Produk</h1>
+    {{-- Notifikasi sukses/gagal --}}
+    @if(session('success'))
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Berhasil',
+                    text: @json(session('success')),
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+            });
+        </script>
+    @endif
+    @if(session('error'))
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Gagal',
+                    text: @json(session('error')),
+                    timer: 2500,
+                    showConfirmButton: false
+                });
+            });
+        </script>
+    @endif
     <div class="card shadow-sm">
         <div class="card-header bg-light d-flex justify-content-between align-items-center">
            <h5 class="mb-0">Daftar Produk</h5>
@@ -37,8 +61,8 @@
                             <th>Kode</th>
                             <th>Harga Jual</th>
                             <th>Serial?</th>
-                            <th>Status</th>
                             <th>Stok Minimum</th>
+                            <th>Status</th>
                             <th>Aksi</th>
                         </tr>
                     </thead>

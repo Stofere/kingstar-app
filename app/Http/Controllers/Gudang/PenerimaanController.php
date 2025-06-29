@@ -161,8 +161,8 @@ class PenerimaanController extends Controller
         // Data lain untuk view
         $suppliers = Supplier::where('status', true)->orderBy('nama')->pluck('nama', 'id');
         $lokasiPenyimpanan = ['GUDANG' => 'GUDANG', 'TOKO' => 'TOKO'];
-        $tipeGaransi = ['NONE' => 'NONE', 'RESMI' => 'RESMI', 'SELF_SERVICE' => 'SELF_SERVICE'];
-        $kondisiBarang = ['BAIK' => 'BAIK'];
+        $tipeGaransi = ['NONE' => 'NONE', 'RESMI' => 'RESMI', 'SELF_SERVICE' => 'SELF SERVICE'];
+        $kondisiBarang = ['BAIK' => 'BAIK', 'RUSAK' => 'RUSAK'];
 
         return view('gudang.penerimaan.create', compact(
             'suppliers', 'selectedPembelian', 'detailItems', 'lokasiPenyimpanan',
@@ -173,10 +173,11 @@ class PenerimaanController extends Controller
     public function store(StorePenerimaanRequest $request)
     {
         $validated = $request->validated();
-        $diterimaAt = Carbon::parse($validated['diterima_at']);
+        $diterimaAt = Carbon::parse($validated['diterima_at'], config('app.timezone'));
         $tipePenerimaan = $validated['tipe_penerimaan'];
         $idPembelian = $validated['id_pembelian'] ?? null;
         $idSupplierUntukStok = null;
+        $pembelianData = null; // Inisialisasi variabel
 
         if ($tipePenerimaan === 'PO' || $tipePenerimaan === 'RETUR') {
             $pembelianData = Pembelian::find($idPembelian);
@@ -199,92 +200,141 @@ class PenerimaanController extends Controller
                 $produk = Produk::find($itemData['id_produk']);
                 if (!$produk) throw new \Exception("Produk dengan ID {$itemData['id_produk']} tidak ditemukan.");
 
-                $hargaBeliUntukStok = 0;
+                // ================================================================
+                // === LOGIKA BARU UNTUK HARGA BELI & TIPE STOK ---
+                // ================================================================
+                $tipeStok = 'REGULER'; // Default untuk penerimaan dari PO
+                $hargaBeliUntukStok = 0; // Default harga beli
                 $idDetailPembelian = $itemData['id_detail_pembelian'] ?? null;
 
-                if ($idDetailPembelian) {
-                    $detailPO = DetailPembelian::find($idDetailPembelian);
-                    if ($detailPO) {
-                        $hargaBeliUntukStok = $detailPO->harga_beli;
+                if ($tipePenerimaan === 'MANUAL') {
+                    $tipeStok = $itemData['tipe_stok'] ?? 'REGULER';
+                    // Untuk penerimaan manual (baik REGULER atau KONSINYASI),
+                    // harga beli akan 0 karena Gudang tidak menginputnya. Admin akan mengisi nanti.
+                } else { // Untuk PO atau RETUR
+                    if ($idDetailPembelian) {
+                        $detailPO = DetailPembelian::find($idDetailPembelian);
+                        if ($detailPO) {
+                            $hargaBeliUntukStok = $detailPO->harga_beli;
+                        }
                     }
                 }
+                // Hasilnya:
+                // - Penerimaan PO: tipe_stok = REGULER, harga_beli = dari PO
+                // - Penerimaan Manual Konsinyasi: tipe_stok = KONSINYASI, harga_beli = 0
+                // - Penerimaan Manual Reguler: tipe_stok = REGULER, harga_beli = 0
 
                 // Buat record stok baru
                 $stokBarang = StokBarang::create([
-                    'id_produk' => $produk->id, 'id_detail_pembelian' => $idDetailPembelian, 'id_supplier' => $idSupplierUntukStok,
-                    'harga_beli' => $hargaBeliUntukStok, 'jumlah' => $jumlahDiterimaSekarang, 'diterima_at' => $diterimaAt,
-                    'tipe_garansi' => $itemData['tipe_garansi'], 'tipe_stok' => 'REGULER', 'lokasi' => $itemData['lokasi'],
+                    'id_produk' => $produk->id,
+                    'id_detail_pembelian' => $idDetailPembelian,
+                    'id_supplier' => $idSupplierUntukStok,
+                    'harga_beli' => $hargaBeliUntukStok, // << Logika baru diterapkan di sini
+                    'jumlah' => $jumlahDiterimaSekarang,
+                    'diterima_at' => $diterimaAt,
+                    'tipe_garansi' => $itemData['tipe_garansi'],
+                    'tipe_stok' => $tipeStok, // << Logika baru diterapkan di sini
+                    'lokasi' => $itemData['lokasi'],
                     'kondisi' => $itemData['kondisi'],
                 ]);
+                // ================================================================
+                // === AKHIR LOGIKA BARU ---
+                // ================================================================
 
-                // Update jumlah_diterima di detail_pembelian
+                // Update jumlah_diterima di detail_pembelian (tidak berubah)
                 if ($idDetailPembelian) {
                     DetailPembelian::find($idDetailPembelian)->increment('jumlah_diterima', $jumlahDiterimaSekarang);
                 }
 
-                // Proses Log Nomor Seri (Logika lama Anda, biarkan saja)
+                // --- AWAL PERBAIKAN LOGIKA SERIAL ---
                 if ($produk->memiliki_serial && isset($itemData['nomor_seri']) && is_array($itemData['nomor_seri'])) {
                     foreach ($itemData['nomor_seri'] as $noSeri) {
                         $trimmedSn = trim($noSeri);
-                        if (empty($trimmedSn)) { continue; }
+                        if (empty($trimmedSn)) continue;
 
-                        // 1. Validasi baru: Cek status TERAKHIR dari nomor seri ini
-                        $logTerakhir = LogNomorSeri::where('nomor_seri', $trimmedSn)->latest('tanggal_status')->first();
-
-                        // 2. Daftar status yang menandakan barang masih "aktif" di dalam sistem
-                        $statusAktif = ['DITERIMA', 'TERJUAL', 'DIRETUR_PELANGGAN', 'MASUK_STOK_RUSAK', 'KEMBALI_KE_STOK_BAIK_ADMIN'];
-
-                        if ($logTerakhir && in_array($logTerakhir->status_log, $statusAktif)) {
-                            throw new \Exception("Nomor Seri '{$trimmedSn}' sudah ada di sistem dengan status aktif '{$logTerakhir->status_log}'. Tidak bisa diterima lagi kecuali statusnya HILANG atau DIRETUR_SUPPLIER.");
+                        // 1. Validasi BARU menggunakan riwayat_pergerakan_stok
+                        $pergerakanTerakhir = RiwayatPergerakanStok::where('nomor_seri', $trimmedSn)
+                                                                ->latest('tanggal_transaksi')
+                                                                ->latest('id') // Untuk menangani waktu yang sama persis
+                                                                ->first();
+                        
+                        // 2. Cek apakah serial ini boleh diterima
+                        // Serial dianggap "tidak tersedia" jika log terakhirnya adalah transaksi MASUK.
+                        if ($pergerakanTerakhir && $pergerakanTerakhir->jumlah_masuk > 0) {
+                            throw new \Exception("Nomor Seri '{$trimmedSn}' sudah ada di sistem dengan status aktif (Tipe: {$pergerakanTerakhir->tipe_transaksi}). Tidak bisa diterima lagi.");
                         }
-
-                        // 3. Buat Log BARU dengan status 'DITERIMA'
-                        LogNomorSeri::create([
-                            'id_produk' => $stokBarang->id_produk,
-                            'id_stok_barang_asal' => $stokBarang->id,
-                            'nomor_seri' => $trimmedSn,
-                            'status_log' => 'DITERIMA',
-                            'tanggal_status' => $diterimaAt,
-                            'id_referensi' => $idDetailPembelian,
-                            'tipe_referensi' => DetailPembelian::class,
-                            'catatan' => 'Diterima dari supplier.',
-                        ]);
                     }
                 }
-                // =====================================================================
-                // ## PENCATATAN BARU KE RIWAYAT PERGERAKAN STOK                      ##
-                // =====================================================================
-                $keteranganRiwayat = 'Penerimaan ' . ($pembelianData->nomor_pembelian ?? 'Manual');
-                if ($produk->memiliki_serial && !empty($itemData['nomor_seri'])) {
-                    foreach ($itemData['nomor_seri'] as $sn) {
-                        $saldoTerakhir = RiwayatPergerakanStok::where('id_produk', $produk->id)->lockForUpdate()->latest('id')->first();
-                        $saldoSebelumnya = $saldoTerakhir->saldo_setelah_transaksi ?? 0;
+                // --- AKHIR PERBAIKAN LOGIKA SERIAL ---
+
+                $keteranganRiwayat = '';
+                if ($tipePenerimaan === 'PO' || $tipePenerimaan === 'RETUR') {
+                    $pembelianData->loadMissing('supplier');
+                    $supplierNama = $pembelianData->supplier->nama ?? 'N/A';
+                    $keteranganRiwayat = "Penerimaan barang dari Supplier {$supplierNama}";
+                } elseif ($tipePenerimaan === 'MANUAL') {
+                    if ($idSupplierUntukStok) {
+                        $supplierManual = Supplier::find($idSupplierUntukStok);
+                        $keteranganRiwayat = "Penerimaan manual dari " . ($supplierManual->nama ?? 'Supplier Tidak Diketahui');
+                    } else {
+                        $keteranganRiwayat = "Penerimaan manual (tanpa supplier)";
+                    }
+                }
+                // --- AWAL PERUBAHAN TIPE TRANSAKSI ---
+                $tipeStokItemIni = $itemData['tipe_stok'] ?? 'REGULER';
+                $tipeTransaksiRiwayat = 'PENERIMAAN_PO'; // Default
+
+                if ($tipePenerimaan === 'RETUR') {
+                    $tipeTransaksiRiwayat = 'PENERIMAAN_PENGGANTI_RETUR';
+                } elseif ($tipePenerimaan === 'MANUAL') {
+                    if ($tipeStokItemIni === 'KONSINYASI') {
+                        $tipeTransaksiRiwayat = 'PENERIMAAN_KONSINYASI'; // Tipe baru yang spesifik!
+                    } else {
+                        $tipeTransaksiRiwayat = 'PENERIMAAN_MANUAL';
+                    }
+                }
+                // --- AKHIR PERUBAHAN TIPE TRANSAKSI ---
+
+                $serialsDiterima = ($produk->memiliki_serial && !empty($itemData['nomor_seri'])) ? array_filter(array_map('trim', $itemData['nomor_seri'])) : [];
+                $saldoTerakhir = RiwayatPergerakanStok::where('id_produk', $produk->id)->lockForUpdate()->latest('id')->value('saldo_setelah_transaksi') ?? 0;
+                $saldoBerjalan = $saldoTerakhir;
+
+                if (!empty($serialsDiterima)) {
+                    foreach ($serialsDiterima as $sn) {
+                        $saldoBerjalan += 1;
                         RiwayatPergerakanStok::create([
-                            'id_produk' => $produk->id, 'id_stok_barang_terkait' => $stokBarang->id,
-                            'nomor_seri' => trim($sn), 'tipe_transaksi' => 'PENERIMAAN',
-                            'jumlah_masuk' => 1, 'jumlah_keluar' => 0,
-                            'saldo_setelah_transaksi' => $saldoSebelumnya + 1,
-                            'id_referensi' => $idDetailPembelian, 'tipe_referensi' => DetailPembelian::class,
-                            'tanggal_transaksi' => $diterimaAt, 'keterangan' => $keteranganRiwayat,
+                            'id_produk' => $produk->id,
+                            'id_stok_barang_terkait' => $stokBarang->id,
+                            'nomor_seri' => $sn,
+                            'tipe_transaksi' => $tipeTransaksiRiwayat,
+                            'jumlah_masuk' => 1,
+                            'jumlah_keluar' => 0,
+                            'saldo_setelah_transaksi' => $saldoBerjalan,
+                            'id_referensi' => $pembelianData->id ?? null,
+                            'tipe_referensi' => $pembelianData ? Pembelian::class : null,
+                            'tanggal_transaksi' => $diterimaAt,
+                            'keterangan' => $keteranganRiwayat,
                             'id_pengguna' => Auth::id(),
                         ]);
                     }
                 } else {
-                    $saldoTerakhir = RiwayatPergerakanStok::where('id_produk', $produk->id)->lockForUpdate()->latest('id')->first();
-                    $saldoSebelumnya = $saldoTerakhir->saldo_setelah_transaksi ?? 0;
+                    $saldoBerjalan += $jumlahDiterimaSekarang;
                     RiwayatPergerakanStok::create([
-                        'id_produk' => $produk->id, 'id_stok_barang_terkait' => $stokBarang->id,
-                        'tipe_transaksi' => 'PENERIMAAN', 'jumlah_masuk' => $jumlahDiterimaSekarang,
+                        'id_produk' => $produk->id,
+                        'id_stok_barang_terkait' => $stokBarang->id,
+                        'nomor_seri' => null,
+                        'tipe_transaksi' => $tipeTransaksiRiwayat,
+                        'jumlah_masuk' => $jumlahDiterimaSekarang,
                         'jumlah_keluar' => 0,
-                        'saldo_setelah_transaksi' => $saldoSebelumnya + $jumlahDiterimaSekarang,
-                        'id_referensi' => $idDetailPembelian, 'tipe_referensi' => DetailPembelian::class,
-                        'tanggal_transaksi' => $diterimaAt, 'keterangan' => $keteranganRiwayat,
+                        'saldo_setelah_transaksi' => $saldoBerjalan,
+                        'id_referensi' => $pembelianData->id ?? null,
+                        'tipe_referensi' => $pembelianData ? Pembelian::class : null,
+                        'tanggal_transaksi' => $diterimaAt,
+                        'keterangan' => $keteranganRiwayat,
                         'id_pengguna' => Auth::id(),
                     ]);
                 }
-                // =====================================================================
-                // ## AKHIR PENCATATAN BARU                                         ##
-                // =====================================================================
+                // ## AKHIR PENCATATAN BARU ##
             } // End foreach
 
             if (!$adaItemDiterima) {
@@ -292,22 +342,38 @@ class PenerimaanController extends Controller
                 return redirect()->back()->with('error', 'Tidak ada item yang diinput untuk diterima.')->withInput();
             }
 
-            // Update status PO utama setelah semua item diproses
+            // ================================================================
+            // === UPDATE STATUS PO UTAMA (LOGIKA BARU) ---
+            // ================================================================
             if ($idPembelian) {
+                // Kita perlu me-reload data pembelian untuk mendapatkan jumlah diterima terbaru
                 $pembelianToUpdate = Pembelian::with('detailPembelian')->find($idPembelian);
+
                 if ($pembelianToUpdate) {
-                    $semuaDiterima = $pembelianToUpdate->detailPembelian->every(function ($detail) {
+                    $semuaItemSudahDiterima = $pembelianToUpdate->detailPembelian->every(function ($detail) {
                         return $detail->jumlah <= $detail->jumlah_diterima;
                     });
 
-                    if ($semuaDiterima) {
-                        $pembelianToUpdate->status_pembelian = 'SELESAI';
+                    if ($semuaItemSudahDiterima) {
+                        // Jika semua barang sudah diterima, cek status pembayaran
+                        if ($pembelianToUpdate->status_pembayaran === 'LUNAS') {
+                            // Jika sudah lunas, barulah transaksi benar-benar Selesai
+                            $pembelianToUpdate->status_pembelian = 'SELESAI';
+                        } else {
+                            // Jika belum lunas, gunakan status baru yang lebih deskriptif
+                            // Status ini menandakan bahwa dari segi barang sudah beres, tinggal bayar.
+                            $pembelianToUpdate->status_pembelian = 'MENUNGGU_PEMBAYARAN';
+                        }
                     } else {
+                        // Jika belum semua diterima, statusnya tetap TIBA_SEBAGIAN
                         $pembelianToUpdate->status_pembelian = 'TIBA_SEBAGIAN';
                     }
                     $pembelianToUpdate->save();
                 }
             }
+            // ================================================================
+            // === AKHIR UPDATE STATUS PO ---
+            // ================================================================
 
             DB::commit();
             return redirect()->route('gudang.penerimaan.index')->with('success', 'Penerimaan barang berhasil dicatat.');

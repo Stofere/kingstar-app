@@ -16,6 +16,7 @@ use App\Models\LogNomorSeri;
 use App\Models\RiwayatPergerakanStok;
 use App\Models\Penjualan;
 use App\Models\DetailPenjualan;
+use App\Models\Pembelian;
 // Pastikan model DetailPenjualanStokAlokasi ada jika Anda menggunakannya,
 // Namun dalam logika store di bawah, kita akan create langsung dari relasi DetailPenjualan
 // use App\Models\DetailPenjualanStokAlokasi;
@@ -114,33 +115,49 @@ class PenjualanController extends Controller
     {
         $request->validate([
             'id_produk' => 'required|integer|exists:produk,id',
-            'qty_dibutuhkan' => 'required|integer|min:1', // qty_dibutuhkan kini hanya untuk info di modal
+            'qty_dibutuhkan' => 'required|integer|min:1',
         ]);
 
         $idProduk = $request->input('id_produk');
-        $qtyDibutuhkan = $request->input('qty_dibutuhkan'); // Untuk dikirim kembali ke JS
+        $qtyDibutuhkan = $request->input('qty_dibutuhkan');
         $produk = Produk::find($idProduk);
 
         if (!$produk) {
             return response()->json(['success' => false, 'message' => 'Produk tidak ditemukan.'], 404);
         }
 
-        $batches = StokBarang::where('id_produk', $idProduk)
+        $query = StokBarang::where('id_produk', $idProduk)
                             ->where('jumlah', '>', 0)
                             ->where('kondisi', 'BAIK')
-                            ->whereNull('id_penjualan_alokasi') // Hanya batch yang BELUM dialokasikan
-                            ->where('lokasi', 'TOKO')           // Hanya batch yang ada di lokasi TOKO (sesuaikan jika perlu)
-                            ->orderBy('diterima_at', 'asc')     // FIFO
-                            ->get();
+                            ->whereNull('id_penjualan_alokasi')
+                            ->where('lokasi', 'TOKO');
+
+        // ================================================================
+        // === FILTER BARU UNTUK KONSINYASI ---
+        // ================================================================
+        $query->where(function ($q) {
+            // Kondisi 1: Ambil semua stok yang tipenya bukan KONSINYASI (misal: REGULER)
+            $q->where('tipe_stok', '!=', 'KONSINYASI')
+              // Kondisi 2: ATAU jika tipenya KONSINYASI, pastikan harga belinya sudah diisi (lebih dari 0)
+              ->orWhere(function ($subQ) {
+                  $subQ->where('tipe_stok', '=', 'KONSINYASI')
+                       ->where('harga_beli', '>', 0);
+              });
+        });
+        // ================================================================
+        // === AKHIR FILTER BARU ---
+        // ================================================================
+
+        $batches = $query->orderBy('diterima_at', 'asc')->get();
 
         $formattedBatches = $batches->map(function($batch) {
             return [
                 'id' => $batch->id,
                 'jumlah_tersedia' => $batch->jumlah,
                 'diterima_at_formatted' => Carbon::parse($batch->diterima_at)->isoFormat('D MMM YYYY, HH:mm'),
-                'harga_beli_formatted' => 'Rp ' . number_format($batch->harga_beli, 0, ',', '.'), // Contoh format harga beli
+                'harga_beli_formatted' => 'Rp ' . number_format($batch->harga_beli, 0, ',', '.'),
                 'lokasi' => $batch->lokasi,
-                'tipe_garansi' => $batch->tipe_garansi, // Kirim kode aslinya
+                'tipe_garansi' => $batch->tipe_garansi,
                 'tipe_garansi_display' => ucwords(str_replace('_', ' ', $batch->tipe_garansi)),
                 'tipe_stok' => $batch->tipe_stok,
                 'tipe_stok_display' => ucwords(str_replace('_', ' ', $batch->tipe_stok)),
@@ -160,48 +177,63 @@ class PenjualanController extends Controller
     }
 
     public function getAvailableSerialsAjax(Request $request)
-    {
-        $request->validate([
-            'id_stok_barang' => 'required|integer|exists:stok_barang,id',
-        ]);
+{
+    $request->validate([
+        'id_stok_barang' => 'required|integer|exists:stok_barang,id',
+    ]);
 
-        $idStokBarang = $request->input('id_stok_barang');
+    $idStokBarang = $request->input('id_stok_barang');
+    $batch = StokBarang::with('produk')->find($idStokBarang);
 
-        // Langkah 1: Ambil SEMUA nomor seri yang ASLI berasal dari batch ini.
-        $semuaSerialAsalBatch = LogNomorSeri::where('id_stok_barang_asal', $idStokBarang)
-            ->where('status_log', 'DITERIMA')
-            ->pluck('nomor_seri');
+    if (!$batch || !$batch->produk->memiliki_serial) {
+        return response()->json(['success' => false, 'message' => 'Batch tidak ditemukan atau produk tidak berserial.', 'serials' => []]);
+    }
+    
+    // =========================================================================
+    // ## LOGIKA BARU MENGGUNAKAN 'riwayat_pergerakan_stok' (LEBIH BAIK) ##
+    // =========================================================================
+    
+    // Langkah 1: Dapatkan semua nomor seri yang PERNAH tercatat masuk ke batch ini sebagai kandidat.
+    $candidateSerials = RiwayatPergerakanStok::where('id_stok_barang_terkait', $idStokBarang)
+        ->where('jumlah_masuk', '>', 0)
+        ->whereNotNull('nomor_seri')
+        ->distinct()
+        ->pluck('nomor_seri');
 
-        if ($semuaSerialAsalBatch->isEmpty()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Tidak ada nomor seri yang tercatat untuk batch ini.',
-                'serials' => []
-            ]);
-        }
+    if ($candidateSerials->isEmpty()) {
+        return response()->json(['success' => false, 'message' => 'Tidak ada catatan nomor seri masuk untuk batch ini.', 'serials' => []]);
+    }
 
-        // Langkah 2: Dari daftar di atas, cari tahu mana yang statusnya sudah TIDAK TERSEDIA lagi.
-        $serialTidakTersedia = LogNomorSeri::whereIn('nomor_seri', $semuaSerialAsalBatch)
-            ->whereIn('status_log', ['TERJUAL', 'DIRETUR_PELANGGAN', 'DIRETUR_SUPPLIER', 'RUSAK']) // Status final
-            ->pluck('nomor_seri')
-            ->unique();
+    // Langkah 2: Dari semua kandidat, cari tahu ID record pergerakan TERAKHIR untuk setiap serial.
+    // Ini adalah cara paling efisien untuk menentukan status terkini.
+    $latestMovementIds = RiwayatPergerakanStok::select(DB::raw('MAX(id) as id'))
+        ->whereIn('nomor_seri', $candidateSerials)
+        ->groupBy('nomor_seri')
+        ->pluck('id');
 
-        // Langkah 3: Kurangi daftar semua serial dengan yang tidak tersedia untuk mendapatkan yang valid.
-        $serials = $semuaSerialAsalBatch->diff($serialTidakTersedia)->values()->all();
+    // Langkah 3: Ambil semua serial dari pergerakan terakhir yang:
+    // a. Merupakan transaksi MASUK (bukan keluar).
+    // b. Benar-benar milik batch yang sedang kita cek.
+    $availableSerials = RiwayatPergerakanStok::whereIn('id', $latestMovementIds)
+        ->where('jumlah_masuk', '>', 0) 
+        ->where('id_stok_barang_terkait', $idStokBarang)
+        ->pluck('nomor_seri')
+        ->values()
+        ->all();
 
-        if (empty($serials)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Semua nomor seri untuk batch ini sudah teralokasi atau tidak tersedia.',
-                'serials' => []
-            ]);
-        }
-
+    if (empty($availableSerials)) {
         return response()->json([
-            'success' => true,
-            'serials' => $serials
+            'success' => false,
+            'message' => 'Semua nomor seri untuk batch ini sudah teralokasi atau tidak tersedia.',
+            'serials' => []
         ]);
     }
+
+    return response()->json([
+        'success' => true,
+        'serials' => $availableSerials
+    ]);
+}
 
     public function store(StorePenjualanRequest $request)
     {
@@ -284,120 +316,123 @@ class PenjualanController extends Controller
                 'nama_produk_snapshot' => $produk->nama,
                 'kode_produk_snapshot' => $produk->kode_produk,
                 'subtotal' => (int)$itemData['jumlah'] * (float)$itemData['harga_jual'],
-                'status_bayar_konsinyasi' => 'BELUM_RELEVAN',
             ]);
 
-            if ($validated['tipe_transaksi'] === 'BIASA') {
-                if (!isset($itemData['stok_allocations'])) { throw new \Exception("Data alokasi stok tidak ditemukan untuk produk {$produk->nama}."); }
-                
+          if ($validated['tipe_transaksi'] === 'BIASA') {
                 $stokAllocations = json_decode($itemData['stok_allocations'], true);
-                if (json_last_error() !== JSON_ERROR_NONE) { throw new \Exception("Format data alokasi stok tidak valid untuk produk {$produk->nama}.");}
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    throw new \Exception("Format data alokasi stok tidak valid untuk produk {$produk->nama}.");
+                }
 
                 $allSerialsForItem = [];
-                $isKonsinyasiItem = false;
                 $tipeGaransiTerpilihUntukPelanggan = 'NONE';
 
                 foreach ($stokAllocations as $alloc) {
                     $stokBarang = StokBarang::lockForUpdate()->find($alloc['id_stok_barang']);
-                    if (!$stokBarang || $stokBarang->jumlah < $alloc['qty_allocated']) { throw new \Exception("Stok untuk Batch ID {$alloc['id_stok_barang']} tidak mencukupi."); }
+                    if (!$stokBarang) {
+                        throw new \Exception("Batch stok dengan ID {$alloc['id_stok_barang']} tidak ditemukan.");
+                    }
+                    if ($stokBarang->jumlah < $alloc['qty_allocated']) {
+                        throw new \Exception("Stok untuk Batch ID {$alloc['id_stok_barang']} tidak mencukupi.");
+                    }
 
+                    $serialsTerjualDiAlokasiIni = $alloc['serials_selected'] ?? [];
+                    if ($produk->memiliki_serial) {
+                        if (count($serialsTerjualDiAlokasiIni) !== (int)$alloc['qty_allocated']) {
+                            throw new \Exception("Jumlah nomor seri tidak cocok dengan kuantitas untuk produk {$produk->nama}.");
+                        }
+                        
+                        foreach ($serialsTerjualDiAlokasiIni as $serialNumber) {
+                            $pergerakanTerakhir = RiwayatPergerakanStok::where('nomor_seri', trim($serialNumber))->latest('id')->first();
+                            if (!$pergerakanTerakhir || $pergerakanTerakhir->jumlah_masuk == 0 || $pergerakanTerakhir->id_stok_barang_terkait != $stokBarang->id) {
+                                throw new \Exception("Nomor Seri '{$serialNumber}' tidak valid atau tidak tersedia di Batch ID {$stokBarang->id}.");
+                            }
+                        }
+                    }
+                    
+                    // Kurangi stok fisik
                     $stokBarang->decrement('jumlah', $alloc['qty_allocated']);
                     $detailPenjualan->stokAlokasi()->create(['id_stok_barang' => $stokBarang->id, 'jumlah_diambil' => $alloc['qty_allocated']]);
 
-                    if ($stokBarang->tipe_stok === 'KONSINYASI') { $isKonsinyasiItem = true; }
+                    // === LOGIKA PO OTOMATIS KONSINYASI (Sudah Benar) ===
+                    if ($stokBarang->tipe_stok === 'KONSINYASI') {
+                        $poKonsinyasi = Pembelian::create([
+                            'id_supplier'       => $stokBarang->id_supplier,
+                            'id_pengguna'       => Auth::id(),
+                            'nomor_pembelian'   => $this->generateNextKonsinyasiPONumber(now()),
+                            'tanggal_pembelian' => now(),
+                            'total_harga'       => $alloc['qty_allocated'] * $stokBarang->harga_beli,
+                            'status_pembayaran' => 'BELUM_LUNAS',
+                            'status_pembelian'  => 'SELESAI',
+                            'catatan'           => 'Pembelian otomatis dari penjualan barang konsinyasi. Ref. Invoice: ' . $penjualan->nomor_penjualan,
+                            'status'            => true,
+                        ]);
+                        $poKonsinyasi->detailPembelian()->create([
+                            'id_produk'         => $produk->id,
+                            'jumlah'            => $alloc['qty_allocated'],
+                            'harga_beli'        => $stokBarang->harga_beli,
+                            'jumlah_diterima'   => $alloc['qty_allocated'],
+                        ]);
+                        $detailPenjualan->update(['catatan' => 'Pembelian konsinyasi terkait: ' . $poKonsinyasi->nomor_pembelian]);
+                    }
+                    // =========================================================================
+                    // === AKHIR LOGIKA BARU ---
+                    // =========================================================================
                     if ($stokBarang->tipe_garansi === 'RESMI') { $tipeGaransiTerpilihUntukPelanggan = 'RESMI'; } 
                     elseif ($tipeGaransiTerpilihUntukPelanggan !== 'RESMI' && $stokBarang->tipe_garansi === 'SELF_SERVICE') { $tipeGaransiTerpilihUntukPelanggan = 'SELF_SERVICE'; }
 
-                    // ================================================================
-                    // === LOG NOMOR SERI  (CREATE) ===
-                    // ================================================================
-                    if ($produk->memiliki_serial && isset($alloc['serials_selected']) && is_array($alloc['serials_selected'])) {
-                        foreach ($alloc['serials_selected'] as $serialNumber) {
-                            $trimmedSn = trim($serialNumber);
-                            if(empty($trimmedSn)) continue;
-
-                            // 1. Validasi: Pastikan serial ini ada dan statusnya 'DITERIMA' dari batch yang benar
-                            $logTersedia = LogNomorSeri::where('nomor_seri', $trimmedSn)
-                                                      ->where('id_stok_barang_asal', $stokBarang->id)
-                                                      ->where('status_log', 'DITERIMA')
-                                                      ->first();
-                            
-                            if (!$logTersedia) {
-                                throw new \Exception("Nomor Seri '{$trimmedSn}' untuk Produk {$produk->nama} dari Batch ID {$stokBarang->id} tidak ditemukan atau statusnya bukan 'DITERIMA'.");
-                            }
-
-                            // 2. Buat Log BARU dengan status 'TERJUAL'
-                            LogNomorSeri::create([
-                                'id_produk' => $produk->id,
-                                'id_stok_barang_asal' => $stokBarang->id, // Tetap catat batch asal
-                                'nomor_seri' => $trimmedSn,
-                                'status_log' => 'TERJUAL',
-                                'id_referensi' => $detailPenjualan->id,
-                                'tipe_referensi' => DetailPenjualan::class,
-                                'tanggal_status' => $tanggalPenjualan,
-                                'catatan' => 'Terjual melalui nota ' . $penjualan->nomor_penjualan,
-                            ]);
-                            
-                            $allSerialsForItem[] = $trimmedSn;
-                        }
-                    }
-                    // =====================================================================
-                    // ## PENCATATAN BARU KE RIWAYAT PERGERAKAN STOK (SISIPKAN DI SINI) ##
-                    // =====================================================================
+                    
                     $keteranganRiwayat = 'Terjual ke ' . ($penjualan->pelanggan->nama ?? 'Pelanggan Umum');
 
-                    if ($produk->memiliki_serial && !empty($alloc['serials_selected'])) {
-                        // Jika berserial, buat satu baris riwayat untuk setiap nomor seri
-                        foreach ($alloc['serials_selected'] as $sn) {
-                            $saldoTerakhir = RiwayatPergerakanStok::where('id_produk', $produk->id)->lockForUpdate()->latest('id')->first();
-                            $saldoSebelumnya = $saldoTerakhir->saldo_setelah_transaksi ?? 0;
-                            
+                    if ($produk->memiliki_serial) {
+                        foreach ($serialsTerjualDiAlokasiIni as $serialNumber) {
+                            $trimmedSn = trim($serialNumber);
+                            $saldoSebelumnya = RiwayatPergerakanStok::where('id_produk', $produk->id)->lockForUpdate()->latest('id')->value('saldo_setelah_transaksi') ?? 0;
                             RiwayatPergerakanStok::create([
                                 'id_produk' => $produk->id,
                                 'id_stok_barang_terkait' => $stokBarang->id,
-                                'nomor_seri' => trim($sn),
+                                'nomor_seri' => $trimmedSn,
                                 'tipe_transaksi' => 'PENJUALAN',
                                 'jumlah_masuk' => 0,
                                 'jumlah_keluar' => 1,
                                 'saldo_setelah_transaksi' => $saldoSebelumnya - 1,
-                                'id_referensi' => $detailPenjualan->id,
-                                'tipe_referensi' => DetailPenjualan::class,
+                                'id_referensi' => $penjualan->id,
+                                'tipe_referensi' => get_class($penjualan),
                                 'tanggal_transaksi' => $tanggalPenjualan,
                                 'keterangan' => $keteranganRiwayat,
                                 'id_pengguna' => Auth::id(),
                             ]);
+                            $allSerialsForItem[] = $trimmedSn;
                         }
-                    } else {
-                        // Jika tidak berserial, buat satu baris riwayat untuk total jumlah
-                        $saldoTerakhir = RiwayatPergerakanStok::where('id_produk', $produk->id)->lockForUpdate()->latest('id')->first();
-                        $saldoSebelumnya = $saldoTerakhir->saldo_setelah_transaksi ?? 0;
+
+                   } else { // Non-serial
+                        $saldoSebelumnya = RiwayatPergerakanStok::where('id_produk', $produk->id)->lockForUpdate()->latest('id')->value('saldo_setelah_transaksi') ?? 0;
 
                         RiwayatPergerakanStok::create([
                             'id_produk' => $produk->id,
                             'id_stok_barang_terkait' => $stokBarang->id,
+                            'nomor_seri' => null, // Tidak ada serial
                             'tipe_transaksi' => 'PENJUALAN',
                             'jumlah_masuk' => 0,
                             'jumlah_keluar' => $alloc['qty_allocated'],
                             'saldo_setelah_transaksi' => $saldoSebelumnya - $alloc['qty_allocated'],
-                            'id_referensi' => $detailPenjualan->id,
-                            'tipe_referensi' => DetailPenjualan::class,
+                            'id_referensi' => $penjualan->id,
+                            'tipe_referensi' => Penjualan::class,
                             'tanggal_transaksi' => $tanggalPenjualan,
                             'keterangan' => $keteranganRiwayat,
                             'id_pengguna' => Auth::id(),
                         ]);
                     }
                     // =====================================================================
-                    // ## AKHIR PENCATATAN BARU                                         ##
+                    // ## AKHIR PENCATATAN BARU (PERBAIKAN FINAL)                         ##
                     // =====================================================================
                 } // End loop alokasi batch
 
-                    // Update DetailPenjualan dengan info gabungan untuk transaksi BIASA
+                    // Update detail penjualan dengan serial dan garansi
                     $updateDataDetail = [];
                     if (!empty($allSerialsForItem)) {
                         $updateDataDetail['nomor_seri_terjual'] = implode(',', array_unique($allSerialsForItem));
                     }
-
-                    $updateDataDetail['status_bayar_konsinyasi'] = $isKonsinyasiItem ? 'BELUM_DIBAYAR_SUPPLIER' : 'BELUM_RELEVAN';
 
                     if ($tipeGaransiTerpilihUntukPelanggan === 'RESMI' && $produk->durasi_garansi_standar_bulan > 0) {
                         $updateDataDetail['customer_garansi_mulai_at'] = $tanggalPenjualan->copy()->toDateString();
@@ -483,6 +518,28 @@ class PenjualanController extends Controller
         }
         return $prefix . str_pad($nextSequence, 3, '0', STR_PAD_LEFT); // Urutan 3 digit, misal 001, 002, ... 010, ... 100
     }
+
+    // --- METHOD HELPER BARU UNTUK NOMOR PO KONSINYASI ---
+    private function generateNextKonsinyasiPONumber(Carbon $date): string
+    {
+        $branchCode = config('app.branch_code', 'KGT');
+        $dateFormatted = $date->format('dmy');
+        // Gunakan prefix berbeda agar mudah diidentifikasi, misal 'POC' untuk PO Consignment ato konsinyasi artinea
+        $prefix = "POC-{$branchCode}-{$dateFormatted}-"; 
+        
+        $lastToday = Pembelian::where('nomor_pembelian', 'LIKE', $prefix . '%')
+                                ->orderBy('nomor_pembelian', 'desc')
+                                ->first();
+        $nextSequence = 1;
+        if ($lastToday) {
+            $lastSequencePart = substr($lastToday->nomor_pembelian, strlen($prefix));
+            if (is_numeric($lastSequencePart)) {
+                $nextSequence = (int)$lastSequencePart + 1;
+            }
+        }
+        return $prefix . str_pad($nextSequence, 3, '0', STR_PAD_LEFT);
+    }
+
     
     /**
      * Menampilkan halaman nota penjualan untuk dicetak.

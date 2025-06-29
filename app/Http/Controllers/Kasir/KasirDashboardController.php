@@ -2,51 +2,52 @@
 
 namespace App\Http\Controllers\Kasir;
 
-use App\Http\Controllers\Controller; // Pastikan use Controller dasar
+use App\Http\Controllers\Controller;
+use App\Models\Penjualan;
 use Illuminate\Http\Request;
-// Jika perlu data untuk dashboard, import model yang relevan di sini nanti
-// use App\Models\Penjualan;
-// use Carbon\Carbon; // Jika perlu manipulasi tanggal
+use Illuminate\Support\Facades\Auth;
+use Carbon\Carbon;
 
-class KasirDashboardController extends Controller // Pastikan extends Controller
+class KasirDashboardController extends Controller
 {
-    /**
-     * Menampilkan halaman dashboard untuk Kasir.
-     *
-     * @return \Illuminate\Contracts\View\View|\Illuminate\Contracts\View\Factory
-     */
-    public function index() // Method yang dibutuhkan oleh route
+    public function index()
     {
-        // --- Logika untuk mengambil data dashboard Kasir ---
-        // Anda bisa menambahkan logika di sini untuk mengambil data
-        // yang ingin ditampilkan di dashboard Kasir.
-        // Contoh (jika sudah ada data penjualan):
-        /*
         $today = Carbon::today();
-        $totalPenjualanHariIni = Penjualan::whereDate('tanggal_penjualan', $today)->sum('total_harga');
-        $jumlahTransaksiHariIni = Penjualan::whereDate('tanggal_penjualan', $today)->count();
-        $produkTerlarisHariIni = \App\Models\DetailPenjualan::select('id_stok_barang', \DB::raw('SUM(jumlah) as total_terjual'))
-                                    ->with('stokBarang.produk') // Eager load produk
-                                    ->join('penjualan', 'detail_penjualan.id_penjualan', '=', 'penjualan.id')
-                                    ->whereDate('penjualan.tanggal_penjualan', $today)
-                                    ->groupBy('id_stok_barang')
-                                    ->orderByDesc('total_terjual')
-                                    ->limit(5)
-                                    ->get();
-        */
+        $user = Auth::user();
 
-        // Kirim data ke view jika ada
-        // return view('kasir.dashboard', compact(
-        //     'totalPenjualanHariIni',
-        //     'jumlahTransaksiHariIni',
-        //     'produkTerlarisHariIni'
-        // ));
+        // 1. Total Penjualan Toko Keseluruhan Hari Ini
+        $totalPenjualanTokoHariIni = Penjualan::whereDate('tanggal_penjualan', $today)
+                                            ->where('status_penjualan', 'SELESAI') // Hanya yang sudah selesai
+                                            ->sum('total_harga');
+        $jumlahTransaksiTokoHariIni = Penjualan::whereDate('tanggal_penjualan', $today)
+                                             ->where('status_penjualan', 'SELESAI')
+                                             ->count();
 
-        // Untuk saat ini, cukup tampilkan view dashboard kasir
-        // Pastikan view 'kasir.dashboard' sudah dibuat di resources/views/kasir/
-        return view('kasir.dashboard');
+        // 2. Daftar Transaksi Terakhir (misal 5 terakhir oleh SEMUA kasir, atau filter by user jika perlu)
+        $transaksiTerakhir = Penjualan::with('pelanggan')
+                                ->where('status_penjualan', 'SELESAI') // Atau bisa juga tampilkan yang masih PROSES
+                                ->orderBy('tanggal_penjualan', 'desc')
+                                ->limit(5)
+                                ->get();
+
+        // 3. Pesan Barang Menunggu Pelunasan/Pengambilan
+        $pesanBarangMenunggu = Penjualan::where('tipe_transaksi', 'PESAN_BARANG')
+                                        ->whereIn('status_penjualan', ['MENUNGGU_PELUNASAN', 'SIAP_DIAMBIL'])
+                                        ->with('pelanggan', 'detailPenjualan.produk') // Eager load untuk info
+                                        ->orderBy('tanggal_penjualan', 'asc')
+                                        ->limit(5) // Tampilkan beberapa saja di dashboard
+                                        ->get();
+        $jumlahPesanBarangMenunggu = Penjualan::where('tipe_transaksi', 'PESAN_BARANG')
+                                        ->whereIn('status_penjualan', ['MENUNGGU_PELUNASAN', 'SIAP_DIAMBIL'])
+                                        ->count();
+
+
+        return view('kasir.dashboard', compact(
+            'totalPenjualanTokoHariIni',
+            'jumlahTransaksiTokoHariIni',
+            'transaksiTerakhir',
+            'pesanBarangMenunggu',
+            'jumlahPesanBarangMenunggu'
+        ));
     }
-
-    // Method lain untuk controller ini bisa ditambahkan di sini nanti
-    // Misalnya: method untuk menampilkan transaksi hari ini, dll.
 }

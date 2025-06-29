@@ -59,7 +59,9 @@ class StokBarang extends Model
     // Relasi: Satu batch StokBarang bisa dijual dalam banyak DetailPenjualan (jika qty > 1)
     public function detailPenjualan()
     {
-        return $this->hasMany(DetailPenjualan::class, 'id_stok_barang');
+        return $this->belongsToMany(DetailPenjualan::class, 'detail_penjualan_stok_alokasi', 'id_stok_barang', 'id_detail_penjualan')
+                    ->withPivot('jumlah_diambil')
+                    ->withTimestamps();
     }
 
     // Relasi: Satu batch StokBarang bisa diretur (ReturPembelian)
@@ -79,12 +81,6 @@ class StokBarang extends Model
      public function detailStokOpname()
      {
          return $this->hasMany(DetailStokOpname::class, 'id_stok_barang');
-     }
-
-     // Relasi: Satu batch StokBarang bisa mengalami banyak penyesuaian
-     public function penyesuaianStok()
-     {
-         return $this->hasMany(PenyesuaianStok::class, 'id_stok_barang');
      }
 
      // Relasi: Satu batch StokBarang bisa memiliki banyak log nomor seri (saat diterima)

@@ -423,7 +423,6 @@
                     <tr class="item-penjualan-row" data-row-id="${rowId}">
                         <td>
                             <select class="form-select form-select-sm select2-produk-item" name="items[${rowId}][id_produk]" data-placeholder="Cari Produk..." required></select>
-                            <small class="text-muted d-block mt-1">Stok: <span class="stok-produk-info">-</span></small>
                             <small class="text-muted d-block">Harga Std: <span class="harga-standar-info">-</span></small>
                             <div class="invalid-feedback product-error-feedback"></div>
                         </td>
@@ -844,71 +843,62 @@
                 });
             }
 
-            function attachMultiBatchSerialCheckboxEvents(qtyNeededForThisBatchFromInput) {
-                $('.nomor-seri-checkbox-multi').off('change').on('change', function() {
+            // --- FIX: Event delegation & validasi serial lebih aman ---
+            function attachMultiBatchSerialCheckboxEvents() {
+                $('#batch-allocation-details').off('change.serial').on('change.serial', '.nomor-seri-checkbox-multi', function() {
                     const idStokBarang = $(this).data('id-stok-barang');
-                    // Ambil qtyNeeded dari input qty batch saat ini, bukan dari data-atribut checkbox
                     const qtyNeededForThisBatch = parseInt($(`.qty-from-batch-input[data-id-stok-barang="${idStokBarang}"]`).val()) || 0;
                     const checkedInThisGroup = $(`.nomor-seri-checkbox-multi[data-id-stok-barang="${idStokBarang}"]:checked`).length;
-
                     if (checkedInThisGroup > qtyNeededForThisBatch) {
                         $(this).prop('checked', false);
                         Swal.fire('Perhatian', `Anda hanya boleh memilih ${qtyNeededForThisBatch} serial untuk batch ini.`, 'warning');
                     }
                     checkOverallModalValidity();
                 });
-                checkOverallModalValidity();
             }
 
             function checkOverallModalValidity() {
-                let totalQtyTerpilihDariBatchInputs = 0;
-                $('.qty-from-batch-input').each(function() { totalQtyTerpilihDariBatchInputs += parseInt($(this).val()) || 0; });
-
-                const qtyDibutuhkanGlobal = currentQtyDibutuhkanTotalModal;
-
-                if (totalQtyTerpilihDariBatchInputs !== qtyDibutuhkanGlobal) {
+                let totalQtyTerpilih = 0;
+                $('.qty-from-batch-input').each(function() { totalQtyTerpilih += parseInt($(this).val()) || 0; });
+                if (totalQtyTerpilih !== currentQtyDibutuhkanTotalModal) {
                     $('#btn-simpan-pilihan-batch').prop('disabled', true);
                     return;
                 }
-
-                let allSerialsValid = true;
+                let allSerialsAreValid = true;
                 if (currentProdukInfoForModal.memiliki_serial) {
-                    $('.qty-from-batch-input').each(function() {
-                        const qtyDariBatchIni = parseInt($(this).val()) || 0;
+                    $('.batch-selection-item').each(function() {
+                        const qtyDariBatchIni = parseInt($(this).find('.qty-from-batch-input').val()) || 0;
                         if (qtyDariBatchIni > 0) {
                             const idStokBarang = $(this).data('id-stok-barang');
-                            const serialsCheckedForThisBatch = $(`.nomor-seri-checkbox-multi[data-id-stok-barang="${idStokBarang}"]:checked`).length;
-                            const serialContainerForThisBatch = $(`#serials-for-batch-${idStokBarang}`);
-
-                            if (serialsCheckedForThisBatch !== qtyDariBatchIni) {
-                                allSerialsValid = false;
-                                return false;
-                            }
-                            // Cek juga jika ada pesan error (misal serial kurang dari backend)
-                            if (serialContainerForThisBatch.find('p.text-danger').length > 0) {
-                                allSerialsValid = false;
+                            const serialsCheckedCount = $(`.nomor-seri-checkbox-multi[data-id-stok-barang="${idStokBarang}"]:checked`).length;
+                            if (serialsCheckedCount !== qtyDariBatchIni) {
+                                allSerialsAreValid = false;
                                 return false;
                             }
                         }
                     });
                 }
-                $('#btn-simpan-pilihan-batch').prop('disabled', !allSerialsValid);
+                $('#btn-simpan-pilihan-batch').prop('disabled', !allSerialsAreValid);
             }
 
-            $('#btn-simpan-pilihan-batch').on('click', function() {
+            $('#btn-simpan-pilihan-batch').off('click').on('click', function() {
                 if (!currentRowIdForBatchModal) return;
+                let totalQtyTerpilih = 0;
+                $('.qty-from-batch-input').each(function() { totalQtyTerpilih += parseInt($(this).val()) || 0; });
+                if (totalQtyTerpilih !== currentQtyDibutuhkanTotalModal) {
+                    Swal.fire('Validasi Gagal', `Total kuantitas terpilih (${totalQtyTerpilih}) tidak sesuai kebutuhan (${currentQtyDibutuhkanTotalModal}).`, 'error');
+                    return;
+                }
                 const targetRow = $(`#tabel-item-penjualan tbody tr[data-row-id="${currentRowIdForBatchModal}"]`);
                 let stokAllocationsForSubmit = [];
                 let displayBatchInfo = [];
                 let displaySerialInfo = [];
-                let totalQtyFinalTerpilih = 0;
                 let formIsValid = true;
-
+                let totalQtyFinalTerpilih = 0;
                 $('.batch-selection-item').each(function() {
                     const idStokBarang = $(this).data('id-stok-barang');
                     const qtyAllocated = parseInt($(this).find('.qty-from-batch-input').val()) || 0;
                     totalQtyFinalTerpilih += qtyAllocated;
-
                     if (qtyAllocated > 0) {
                         let serialsSelectedForThisBatch = [];
                         if (currentProdukInfoForModal.memiliki_serial) {
@@ -917,38 +907,34 @@
                             });
                             if (serialsSelectedForThisBatch.length !== qtyAllocated) {
                                 Swal.fire('Validasi Gagal', `Jumlah serial (${serialsSelectedForThisBatch.length}) untuk Batch ID ${idStokBarang} tidak sesuai dengan kuantitas (${qtyAllocated}). Harap periksa kembali.`, 'error');
-                                formIsValid = false; return false;
+                                formIsValid = false;
+                                return false;
                             }
                         }
                         stokAllocationsForSubmit.push({
-                            id_stok_barang: idStokBarang, qty_allocated: qtyAllocated,
+                            id_stok_barang: idStokBarang,
+                            qty_allocated: qtyAllocated,
                             serials_selected: serialsSelectedForThisBatch
                         });
                         displayBatchInfo.push(`B${idStokBarang}(${qtyAllocated})`);
                         if (serialsSelectedForThisBatch.length > 0) displaySerialInfo.push(...serialsSelectedForThisBatch);
                     }
                 });
-
                 if (!formIsValid) return;
-
                 if (totalQtyFinalTerpilih !== currentQtyDibutuhkanTotalModal) {
                     Swal.fire('Validasi Gagal', `Total kuantitas terpilih (${totalQtyFinalTerpilih}) tidak sesuai kebutuhan (${currentQtyDibutuhkanTotalModal}).`, 'error');
                     return;
                 }
-
                 if (stokAllocationsForSubmit.length === 0 && totalQtyFinalTerpilih > 0) {
-                     Swal.fire('Validasi Gagal', `Terjadi kesalahan pengumpulan data. Harap coba lagi.`, 'error'); return;
+                    Swal.fire('Validasi Gagal', `Terjadi kesalahan pengumpulan data. Harap coba lagi.`, 'error'); return;
                 }
-
-                targetRow.find('input.stok-allocations-json').remove(); // Hapus yang lama jika ada
+                targetRow.find('input.stok-allocations-json').remove();
                 let hiddenInputName = targetRow.find('.select2-produk-item').attr('name').replace('[id_produk]', '[stok_allocations]');
                 targetRow.find('.btn-pilih-batch-serial').parent().append(
                     `<input type="hidden" class="stok-allocations-json" name="${hiddenInputName}" value='${JSON.stringify(stokAllocationsForSubmit)}'>`
                 );
-
                 targetRow.find('.selected-batch-info').text(displayBatchInfo.length > 0 ? displayBatchInfo.join(', ') : 'Pilih').toggleClass('text-success', displayBatchInfo.length > 0).removeClass('text-danger');
                 targetRow.find('.btn-pilih-batch-serial').removeClass('btn-outline-danger btn-outline-secondary').addClass(displayBatchInfo.length > 0 ? 'btn-outline-success' : 'btn-outline-secondary');
-
                 if (currentProdukInfoForModal.memiliki_serial) {
                      targetRow.find('.serial-info-display').text(displaySerialInfo.length > 0 ? `Seri: ${displaySerialInfo.join(', ')}` : 'Pilih Serial!').toggleClass('text-danger fw-bold', displaySerialInfo.length === 0 && totalQtyFinalTerpilih > 0);
                 } else {
@@ -963,30 +949,46 @@
                 let errorMessages = [];
                 let firstInvalidElement = null;
 
-                // 1. Validasi Header Transaksi (Pelanggan jika baru, Kanal, Tipe, Metode Bayar)
-                if ($('#pelanggan_baru_nama').val() && !$('#id_pelanggan').val()){
-                    // Jika pelanggan baru diisi, nama wajib
-                } else if (!$('#id_pelanggan').val() && !$('#pelanggan_baru_nama').val()){
-                    // Bisa jadi pelanggan umum tanpa nama, ini opsional, jadi tidak perlu validasi khusus di sini
-                    // kecuali ada kebijakan harus pilih/isi pelanggan.
+                // --- VALIDASI PELANGGAN WAJIB DIISI (BARU ATAU PILIHAN) ---
+                const pelangganBaruNama = $('#pelanggan_baru_nama').val().trim();
+                const pelangganId = $('#id_pelanggan').val();
+                const pelangganSelect2 = $('#id_pelanggan.select2-pelanggan');
+                // Reset feedback
+                pelangganSelect2.next('.select2-container').find('.select2-selection').removeClass('is-invalid');
+                $('#pelanggan_baru_nama').removeClass('is-invalid');
+                // Jika pelanggan baru diisi, nama wajib
+                if (pelangganBaruNama && !pelangganId) {
+                    if (!pelangganBaruNama) {
+                        errorMessages.push('Nama pelanggan baru wajib diisi.');
+                        isValid = false;
+                        $('#pelanggan_baru_nama').addClass('is-invalid');
+                        if (!firstInvalidElement) firstInvalidElement = $('#pelanggan_baru_nama');
+                    }
+                } else if (!pelangganId && !pelangganBaruNama) {
+                    // Tidak ada pelanggan dipilih/diisi
+                    errorMessages.push('Pelanggan wajib dipilih atau diisi.');
+                    isValid = false;
+                    pelangganSelect2.next('.select2-container').find('.select2-selection').addClass('is-invalid');
+                    if (!firstInvalidElement) firstInvalidElement = pelangganSelect2.next('.select2-container').find('.select2-selection');
                 }
+
                 if (!$('#kanal_transaksi').val()) { errorMessages.push("Kanal transaksi wajib dipilih."); isValid = false; if(!firstInvalidElement) firstInvalidElement = $('#kanal_transaksi');}
                 const tipeTransaksi = $('#tipe_transaksi').val();
                 if (!tipeTransaksi) { errorMessages.push("Tipe transaksi wajib dipilih."); isValid = false; if(!firstInvalidElement) firstInvalidElement = $('#tipe_transaksi');}
                 if (!$('#metode_pembayaran').val()) { errorMessages.push("Metode pembayaran wajib dipilih."); isValid = false; if(!firstInvalidElement) firstInvalidElement = $('#metode_pembayaran');}
 
                 if (tipeTransaksi === 'PESAN_BARANG') {
-                    if (parseRupiah($('#uang_muka').val()) <= 0) { // DP harus lebih dari 0 untuk Pesan Barang
+                    if (parseRupiah($('#uang_muka').val()) <= 0) {
                         errorMessages.push("Uang muka (DP) wajib diisi dan lebih dari 0 untuk Pesan Barang.");
                         isValid = false; if(!firstInvalidElement) firstInvalidElement = $('#uang_muka');
                     }
-                } else { // Transaksi BIASA
-                    if (parseRupiah($('#uang_bayar').val()) <= 0 && parseRupiah($('#total_harga').val()) > 0) { // Uang bayar harus ada jika ada total belanja
+                } else {
+                    if (parseRupiah($('#uang_bayar').val()) <= 0 && parseRupiah($('#total_harga').val()) > 0) {
                         errorMessages.push("Uang bayar wajib diisi untuk transaksi biasa.");
                         isValid = false; if(!firstInvalidElement) firstInvalidElement = $('#uang_bayar');
                     } else if (parseRupiah($('#uang_bayar').val()) < parseRupiah($('#total_harga').val())) {
-                         errorMessages.push("Uang bayar kurang dari total belanja.");
-                         isValid = false; if(!firstInvalidElement) firstInvalidElement = $('#uang_bayar');
+                        errorMessages.push("Uang bayar kurang dari total belanja.");
+                        isValid = false; if(!firstInvalidElement) firstInvalidElement = $('#uang_bayar');
                     }
                 }
 
@@ -1003,8 +1005,7 @@
                     const produkSelect = row.find('.select2-produk-item');
                     const jumlahInput = row.find('.item-jumlah');
                     const hargaJualInput = row.find('.item-harga-jual');
-                    const produkInfo = row.data('produk-info'); // Ambil info produk dari data baris
-
+                    const produkInfo = row.data('produk-info');
                     if (!produkSelect.val()) {
                         errorMessages.push(`Produk wajib dipilih untuk item ke-${itemNum}.`);
                         isValid = false; if(!firstInvalidElement) firstInvalidElement = produkSelect;
@@ -1013,11 +1014,10 @@
                         errorMessages.push(`Jumlah untuk item ke-${itemNum} harus lebih dari 0.`);
                         isValid = false; if(!firstInvalidElement) firstInvalidElement = jumlahInput;
                     }
-                    if (parseRupiah(hargaJualInput.val()) < 0) { // Harga boleh 0 jika memang gratis
+                    if (parseRupiah(hargaJualInput.val()) < 0) {
                         errorMessages.push(`Harga jual untuk item ke-${itemNum} tidak boleh negatif.`);
                         isValid = false; if(!firstInvalidElement) firstInvalidElement = hargaJualInput;
                     }
-
                     const stokAllocationsInput = row.find('input.stok-allocations-json');
                     if (tipeTransaksi === 'BIASA') {
                         if (!stokAllocationsInput.length || !stokAllocationsInput.val() || stokAllocationsInput.val() === '[]') {
@@ -1043,7 +1043,6 @@
                                         }
                                     });
                                 }
-
                                 const qtyDiForm = parseInt(jumlahInput.val()) || 0;
                                 if (totalAllocatedQty !== qtyDiForm) {
                                     errorMessages.push(`Total alokasi batch (${totalAllocatedQty}) tidak cocok dengan jumlah (${qtyDiForm}) untuk item ke-${itemNum}.`);
@@ -1053,33 +1052,29 @@
                                     errorMessages.push(`Pemilihan nomor seri tidak sesuai atau tidak lengkap untuk item ke-${itemNum}.`);
                                     isValid = false;
                                 }
-                                // Update visual tombol batch
                                 if (isValid) {
-                                     row.find('.btn-pilih-batch-serial').removeClass('btn-outline-danger btn-outline-secondary').addClass('btn-outline-success');
+                                    row.find('.btn-pilih-batch-serial').removeClass('btn-outline-danger btn-outline-secondary').addClass('btn-outline-success');
                                 } else {
-                                     row.find('.btn-pilih-batch-serial').removeClass('btn-outline-success btn-outline-secondary').addClass('btn-outline-danger');
-                                     if(!firstInvalidElement) firstInvalidElement = row.find('.btn-pilih-batch-serial');
+                                    row.find('.btn-pilih-batch-serial').removeClass('btn-outline-success btn-outline-secondary').addClass('btn-outline-danger');
+                                    if(!firstInvalidElement) firstInvalidElement = row.find('.btn-pilih-batch-serial');
                                 }
-
                             } catch (jsonError) {
                                 errorMessages.push(`Data alokasi stok tidak valid untuk item ke-${itemNum}.`);
                                 isValid = false;
                                 if(!firstInvalidElement) firstInvalidElement = row.find('.btn-pilih-batch-serial');
                             }
                         }
-                    } else { // PESAN_BARANG
-                         // Pastikan tidak ada alokasi stok yang terkirim
-                        if (stokAllocationsInput.length > 0) { // Jika inputnya masih ada (seharusnya sudah diremove)
+                    } else {
+                        if (stokAllocationsInput.length > 0) {
                             errorMessages.push(`Item 'Pesan Barang' ke-${itemNum} tidak memerlukan alokasi batch/stok saat ini.`);
                             isValid = false;
-                            // Tandai error di baris atau produk
                             if(!firstInvalidElement) firstInvalidElement = produkSelect;
                         }
                     }
                 });
 
                 if (!isValid) {
-                    e.preventDefault(); // Mencegah form submit
+                    e.preventDefault();
                     let errorHtml = '<ul>';
                     errorMessages.forEach(function(msg) { errorHtml += `<li>${msg}</li>`; });
                     errorHtml += '</ul>';
@@ -1091,14 +1086,13 @@
                     }).then(() => {
                         if (firstInvalidElement) {
                             $('html, body').animate({
-                                scrollTop: $(firstInvalidElement).offset().top - 100 // Scroll ke elemen error pertama
+                                scrollTop: $(firstInvalidElement).offset().top - 100
                             }, 500, function() {
                                 $(firstInvalidElement).focus();
                             });
                         }
                     });
                 } else {
-                    // Jika valid, disable tombol submit untuk mencegah double click
                     $('#btn-simpan-penjualan').prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Memproses...');
                 }
             });

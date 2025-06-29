@@ -38,24 +38,28 @@
 
             <div id="hasil-pencarian-container" class="mt-3" style="display:none;">
                 <hr>
-                <div id="detail-transaksi-content" class="mb-3">
-                    {{-- Detail transaksi akan diisi di sini --}}
-                </div>
+                <form id="form-pilih-item" action="{{ route('kasir.retur_penjualan.pilih_item_proses') }}" method="POST">
+                    @csrf
+                    <div id="detail-transaksi-content" class="mb-3">
+                        {{-- Detail transaksi akan diisi di sini --}}
+                    </div>
 
-                <div id="item-retur-list" class="mb-3">
-                    {{-- Daftar item yang bisa diretur --}}
-                </div>
+                    <div id="item-retur-list" class="mb-3">
+                        {{-- Daftar item yang bisa diretur --}}
+                    </div>
 
-                <div class="text-end" id="area-tombol-lanjut-retur" style="display:none;">
-                    <a href="#" id="btn-lanjut-ke-form-retur" class="btn btn-success">
-                        Lanjutkan ke Form Retur <i class="bi bi-arrow-right-circle ms-1"></i>
-                    </a>
-                </div>
+                    <div class="text-end" id="area-tombol-lanjut-retur" style="display:none;">
+                        <button type="submit" id="btn-lanjut-ke-form-retur" class="btn btn-success" disabled>
+                            Lanjutkan ke Form Retur <i class="bi bi-arrow-right-circle ms-1"></i>
+                        </button>
+                    </div>
+                </form>
             </div>
 
             <div id="pesan-area" class="mt-3" style="display:none;">
                  {{-- Untuk pesan error atau info dari AJAX --}}
             </div>
+            
         </div>
     </div>
 </div>
@@ -106,33 +110,36 @@
                                           <p class="mb-0"><strong>Pelanggan:</strong> ${penjualan.pelanggan_nama}</p>`;
                         $('#detail-transaksi-content').html(detailHtml);
 
-                        let itemsHtml = '<h6>Item dalam Transaksi (yang masih bisa diretur):</h6>';
-                        console.log("Detail Items dari response:", detailItems); // Log 3: Data item sebelum loop
+                        let itemsHtml = '<h6>Item dalam Transaksi (pilih yang akan diretur):</h6>';
 
-                        if (detailItems && detailItems.length > 0) {
+                        if (response.detail_items_info && response.detail_items_info.length > 0) {
                             itemsHtml += '<div class="list-group">';
-                            detailItems.forEach(function(item, index) {
-                                console.log(`Processing item ${index}:`, item); // Log 4: Setiap item yang diloop
-                                itemsHtml += `<div class="list-group-item item-info-retur">
-                                                <strong>${item.nama_produk}</strong>
-                                                <small class="d-block">Qty Beli: ${item.jumlah_beli_awal} | Harga Saat Beli: ${formatRupiah(item.harga_jual_item)}</small>
-                                                <small class="d-block text-success">Sisa bisa diretur: ${item.sisa_qty_bisa_diretur_item} unit</small>`;
-                                if (item.produk_memiliki_serial) {
-                                    itemsHtml += `<small class="d-block text-info">Serial bisa diretur: ${item.serials_yang_masih_bisa_diretur.length > 0 ? item.serials_yang_masih_bisa_diretur.join(', ') : '-'}</small>`;
-                                }
-                                itemsHtml += `</div>`;
-                            });
-                            itemsHtml += '</div>';
+                            response.detail_items_info.forEach(function(item) {
+                                itemsHtml += `
+                                <label class="list-group-item list-group-item-action d-flex align-items-center">
+                                    <input class="form-check-input me-3 item-retur-checkbox" type="checkbox" name="selected_items[]" value="${item.id_detail_penjualan}">
+                                    <div>
+                                        <strong>${item.nama_produk}</strong>
+                                        <small class="d-block text-success">Sisa bisa diretur: ${item.sisa_qty_bisa_diretur_item} unit</small>
+                                        ${item.produk_memiliki_serial ? `<small class="d-block text-info">Serial bisa diretur: ${item.serials_yang_masih_bisa_diretur.length > 0 ? item.serials_yang_masih_bisa_diretur.join(', ') : '-'}</small>` : ''}
+                                    </div>
+                                </label>`;
+                        });
+                        itemsHtml += '</div>';
                             $('#area-tombol-lanjut-retur').show();
-                            // Pastikan route model binding di controller showReturForm menggunakan 'penjualan' sebagai nama parameter
-                            $('#btn-lanjut-ke-form-retur').attr('href', "{{ url('kasir/retur-penjualan/form') }}/" + penjualan.id);
                         } else {
-                             console.log("Tidak ada item yang bisa diretur berdasarkan response.detail_items_info");
                             itemsHtml += '<div class="alert alert-warning mt-2">Tidak ada item yang dapat diretur dari transaksi ini.</div>';
                         }
                         $('#item-retur-list').html(itemsHtml);
                         $('#hasil-pencarian-container').show();
-
+                        $('.item-retur-checkbox').on('change', function() {
+                            if ($('.item-retur-checkbox:checked').length > 0) {
+                                $('#btn-lanjut-ke-form-retur').prop('disabled', false);
+                            } else {
+                                $('#btn-lanjut-ke-form-retur').prop('disabled', true);
+                            }
+                        });
+                         
                     } else {
                         console.error("AJAX request tidak sukses:", response.message);
                         $('#pesan-area').html(`<div class="alert alert-danger">${response.message || 'Gagal mengambil detail transaksi.'}</div>`).show();

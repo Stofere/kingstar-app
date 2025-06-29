@@ -15,37 +15,31 @@ class PenggunaSeeder extends Seeder
      */
     public function run()
     {
-        // Hapus data lama jika perlu (hati-hati di production!)
-        // Pengguna::truncate(); // Nonaktifkan jika tidak ingin menghapus
-
         // Buat User Admin Utama
         Pengguna::create([
             'nama' => 'Andreas Wijaya',
             'username' => 'admin',
-            'password' => Hash::make('admin123'), // Ganti dengan password aman
+            'password' => Hash::make('admin123'), 
             'role' => 'ADMIN',
             'status' => true,
         ]);
 
-        // Buat User Kasir Contoh
         Pengguna::create([
             'nama' => 'Roger Jeremy',
             'username' => 'kasir1',
-            'password' => Hash::make('kasir123'), // Ganti dengan password aman
+            'password' => Hash::make('kasir123'), 
             'role' => 'KASIR',
             'status' => true,
         ]);
 
-         // Buat User Gudang Contoh
          Pengguna::create([
             'nama' => 'Johan William',
             'username' => 'gudang1',
-            'password' => Hash::make('gudang123'), // Ganti dengan password aman
+            'password' => Hash::make('gudang123'),
             'role' => 'GUDANG',
             'status' => true,
         ]);
 
-        // Buat beberapa user dummy tambahan (opsional)
-        Pengguna::factory()->count(2)->create(); 
+
     }
 }

@@ -23,7 +23,7 @@ class ReturHelper {
             'KOMPLAIN_KE_SUPPLIER' => 'Disisihkan untuk Komplain ke Supplier',
             // Opsi tindakan Admin
             'KEMBALI_KE_STOK_BAIK_ADMIN' => 'Kembali ke Stok Aktif (Kondisi Baik)',
-            'CATAT_SEBAGAI_STOK_RUSAK_FINAL' => 'Dicatat Sebagai Stok Rusak Final',
+            'CATAT_SEBAGAI_STOK_RUSAK' => 'Dicatat Sebagai Stok Rusak Final',
             'AKAN_DIRETUR_KE_SUPPLIER' => 'Akan Diretur ke Supplier',
         ];
         return $options[$key] ?? str_replace('_', ' ', ucwords(strtolower($key ?? '')));

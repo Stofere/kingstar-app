@@ -26,10 +26,6 @@ class ReturPembelianController extends Controller
      */
     public function create()
     {
-        // Data untuk dropdown di form (opsional, tergantung desain form Anda)
-        // $suppliers = Supplier::where('status', true)->orderBy('nama')->pluck('nama', 'id');
-        // $produkList = Produk::where('status', true)->orderBy('nama')->pluck('nama', 'id'); // Mungkin lebih baik AJAX
-
         $alasanReturOptions = [
             'BARANG_RUSAK_DARI_SUPPLIER' => 'Barang Rusak dari Supplier (Saat Terima/Cek)',
             'SALAH_KIRIM_SUPPLIER' => 'Salah Kirim Barang oleh Supplier',
@@ -102,9 +98,8 @@ class ReturPembelianController extends Controller
 
     /**
      * =========================================================================
-     * FUNGSI KUNCI YANG DI REVISI
+     * FUNGSI KUNCI YANG DI REVISI (MENGGUNAKAN RIWAYAT_PERGERAKAN_STOK)
      * AJAX untuk mendapatkan nomor seri yang valid untuk diretur dari sebuah batch.
-     * Logika ini sekarang bisa membedakan antara batch baru dan batch hasil retur.
      * =========================================================================
      */
     public function getSerialsFromBatchAjax(Request $request)
@@ -117,54 +112,41 @@ class ReturPembelianController extends Controller
             return response()->json(['success' => false, 'serials' => [], 'message' => 'Batch tidak ditemukan atau produk tidak berserial.']);
         }
 
-        $availableSerials = [];
+        // Logika tunggal yang berfungsi untuk SEMUA kondisi batch
+        
+        // 1. Dapatkan semua kandidat serial yang PERNAH tercatat masuk ke batch ini.
+        $candidateSerials = RiwayatPergerakanStok::where('id_stok_barang_terkait', $idStokBarang)
+            ->where('jumlah_masuk', '>', 0)
+            ->whereNotNull('nomor_seri')
+            ->distinct()
+            ->pluck('nomor_seri');
 
-        // --- LOGIKA JIKA BATCH ADALAH STOK BARU (KONDISI BAIK) ---
-        if ($batch->kondisi === 'BAIK') {
-            // Langkah 1: Ambil SEMUA nomor seri yang ASLI berasal dari batch ini.
-            $semuaSerialAsalBatch = LogNomorSeri::where('id_stok_barang_asal', $batch->id)
-                ->where('status_log', 'DITERIMA')
-                ->pluck('nomor_seri');
-
-            if (!$semuaSerialAsalBatch->isEmpty()) {
-                // Langkah 2: Cari tahu mana dari serial tersebut yang statusnya sudah TIDAK TERSEDIA lagi (TERJUAL, atau SUDAH DIRETUR sebelumnya)
-                $serialTidakTersedia = LogNomorSeri::whereIn('nomor_seri', $semuaSerialAsalBatch)
-                    ->whereIn('status_log', ['TERJUAL', 'DIRETUR_PELANGGAN', 'DIRETUR_SUPPLIER'])
-                    ->pluck('nomor_seri')
-                    ->unique();
-
-                // Langkah 3: Kurangi daftar semua serial dengan yang tidak tersedia untuk mendapatkan serial yang valid.
-                $availableSerials = $semuaSerialAsalBatch->diff($serialTidakTersedia)->values()->all();
-            }
+        if ($candidateSerials->isEmpty()) {
+            return response()->json(['success' => false, 'serials' => [], 'message' => 'Tidak ada catatan nomor seri untuk batch ini.']);
         }
-        // --- LOGIKA BARU JIKA BATCH ADALAH HASIL DARI RETUR PELANGGAN ---
-        else if (in_array($batch->kondisi, ['RUSAK', 'GUDANG_RETUR'])) {
-            // Untuk batch hasil retur, kita cari nomor seri yang status log terakhirnya adalah 'DIRETUR_PELANGGAN'
-            // dan belum pernah diretur lagi ke supplier.
-            
-            // Cari nomor seri yang log terakhirnya adalah 'DIRETUR_PELANGGAN'
-            $subQuery = LogNomorSeri::select(DB::raw('MAX(id) as id'))
-                ->where('id_produk', $batch->id_produk)
-                ->groupBy('nomor_seri');
 
-            $latestLogs = LogNomorSeri::whereIn('id', $subQuery)->get();
-            
-            foreach($latestLogs as $log) {
-                if ($log->status_log === 'DIRETUR_PELANGGAN') {
-                    // Cek lagi apakah tanggalnya kira-kira cocok (opsional tapi bagus)
-                    if ($log->tanggal_status->toDateString() == $batch->diterima_at->toDateString()) {
-                        $availableSerials[] = $log->nomor_seri;
-                    }
-                }
-            }
-        }
+        // 2. Dari semua kandidat, cari tahu ID record pergerakan TERAKHIR untuk setiap serial.
+        $latestMovementIds = RiwayatPergerakanStok::select(DB::raw('MAX(id) as id'))
+            ->whereIn('nomor_seri', $candidateSerials)
+            ->groupBy('nomor_seri')
+            ->pluck('id');
+
+        // 3. Ambil semua serial dari pergerakan terakhir yang:
+        //    a. Merupakan transaksi MASUK (bukan keluar).
+        //    b. Benar-benar milik batch yang sedang kita cek.
+        $availableSerials = RiwayatPergerakanStok::whereIn('id', $latestMovementIds)
+            ->where('jumlah_masuk', '>', 0)
+            ->where('id_stok_barang_terkait', $idStokBarang)
+            ->pluck('nomor_seri')
+            ->values()
+            ->all();
 
         return response()->json(['success' => true, 'serials' => $availableSerials]);
     }
     
     /**
      * =========================================================================
-     * Logika validasi dan update LogNomorSeri disesuaikan.
+     * Logika validasi dan update disesuaikan untuk RIWAYAT_PERGERAKAN_STOke
      * =========================================================================
      */
     public function store(Request $request)
@@ -189,6 +171,8 @@ class ReturPembelianController extends Controller
        
         try {
             $tanggalRetur = Carbon::parse($validated['tanggal_retur']);
+            // Nomor retur bisa dibuat satu per item atau satu per sesi.
+            // Asumsi saat ini satu per sesi (beberapa item dalam 1 form punya nomor sama)
             $nomorReturPembelianOtomatis = $this->generateNextReturPembelianNumber($tanggalRetur);
             
             foreach ($validated['items_retur'] as $index => $itemReturData) {
@@ -227,53 +211,48 @@ class ReturPembelianController extends Controller
 
                 // 1. Kurangi Stok Fisik pada Batch
                 $stokBarang->decrement('jumlah', $jumlahReturSaatIni);
-
-                // 2. Buat LOG BARU untuk nomor seri yang diretur
-                if ($produk->memiliki_serial && !empty($serialsDireturInputCleaned)) {
-                    foreach ($serialsDireturInputCleaned as $snRetur) {
-                        LogNomorSeri::create([
-                            'id_produk' => $produk->id,
-                            'id_stok_barang_asal' => $stokBarang->id_stok_barang_asal ?? $stokBarang->id,
-                            'nomor_seri' => $snRetur,
-                            'status_log' => 'DIRETUR_SUPPLIER', // Ini adalah status baru yang penting
-                            'id_referensi' => $retur->id,
-                            'tipe_referensi' => ReturPembelian::class,
-                            'tanggal_status' => $tanggalRetur,
-                            'catatan' => 'Diretur ke supplier melalui nota ' . $nomorReturPembelianOtomatis,
-                        ]);
-                    }
-                }
+                
                 // =====================================================================
-                // ## PENCATATAN BARU KE RIWAYAT PERGERAKAN STOK                      ##
+                // ## PENCATATAN BARU KE RIWAYAT PERGERAKAN STOK (REVISI FINAL)       ##
                 // =====================================================================
                 $keteranganRiwayat = 'Diretur ke Supplier (' . ($stokBarang->supplier->nama ?? 'N/A') . ')';
 
                 if ($produk->memiliki_serial && !empty($serialsDireturInputCleaned)) {
-                    foreach ($serialsDireturInputCleaned as $sn) {
-                        $saldoTerakhir = RiwayatPergerakanStok::where('id_produk', $produk->id)->lockForUpdate()->latest('id')->first();
-                        $saldoSebelumnya = $saldoTerakhir->saldo_setelah_transaksi ?? 0;
-
+                    // Jika BERSERIAL, buat satu baris untuk setiap nomor seri
+                    foreach ($serialsDireturInputCleaned as $snRetur) {
+                        $saldoTerakhir = RiwayatPergerakanStok::where('id_produk', $produk->id)->lockForUpdate()->latest('id')->value('saldo_setelah_transaksi') ?? 0;
+                        
                         RiwayatPergerakanStok::create([
-                            'id_produk' => $produk->id, 'id_stok_barang_terkait' => $stokBarang->id,
-                            'nomor_seri' => trim($sn), 'tipe_transaksi' => 'RETUR_SUPPLIER',
-                            'jumlah_masuk' => 0, 'jumlah_keluar' => 1,
-                            'saldo_setelah_transaksi' => $saldoSebelumnya - 1,
-                            'id_referensi' => $retur->id, 'tipe_referensi' => ReturPembelian::class,
-                            'tanggal_transaksi' => $tanggalRetur, 'keterangan' => $keteranganRiwayat,
+                            'id_produk' => $produk->id,
+                            'id_stok_barang_terkait' => $stokBarang->id,
+                            'nomor_seri' => $snRetur,
+                            'tipe_transaksi' => 'RETUR_SUPPLIER',
+                            'jumlah_masuk' => 0,
+                            'jumlah_keluar' => 1, // Selalu 1 untuk pergerakan serial
+                            'saldo_setelah_transaksi' => $saldoTerakhir - 1,
+                            'id_referensi' => $retur->id,
+                            'tipe_referensi' => get_class($retur),
+                            'tanggal_transaksi' => $tanggalRetur,
+                            'keterangan' => $keteranganRiwayat,
                             'id_pengguna' => Auth::id(),
                         ]);
                     }
                 } else {
-                    $saldoTerakhir = RiwayatPergerakanStok::where('id_produk', $produk->id)->lockForUpdate()->latest('id')->first();
-                    $saldoSebelumnya = $saldoTerakhir->saldo_setelah_transaksi ?? 0;
+                    // Jika TIDAK BERSERIAL, buat satu baris untuk total jumlah
+                    $saldoTerakhir = RiwayatPergerakanStok::where('id_produk', $produk->id)->lockForUpdate()->latest('id')->value('saldo_setelah_transaksi') ?? 0;
                     
                     RiwayatPergerakanStok::create([
-                        'id_produk' => $produk->id, 'id_stok_barang_terkait' => $stokBarang->id,
-                        'tipe_transaksi' => 'RETUR_SUPPLIER', 'jumlah_masuk' => 0,
+                        'id_produk' => $produk->id,
+                        'id_stok_barang_terkait' => $stokBarang->id,
+                        'nomor_seri' => null,
+                        'tipe_transaksi' => 'RETUR_SUPPLIER',
+                        'jumlah_masuk' => 0,
                         'jumlah_keluar' => $jumlahReturSaatIni,
-                        'saldo_setelah_transaksi' => $saldoSebelumnya - $jumlahReturSaatIni,
-                        'id_referensi' => $retur->id, 'tipe_referensi' => ReturPembelian::class,
-                        'tanggal_transaksi' => $tanggalRetur, 'keterangan' => $keteranganRiwayat,
+                        'saldo_setelah_transaksi' => $saldoTerakhir - $jumlahReturSaatIni,
+                        'id_referensi' => $retur->id,
+                        'tipe_referensi' => get_class($retur),
+                        'tanggal_transaksi' => $tanggalRetur,
+                        'keterangan' => $keteranganRiwayat,
                         'id_pengguna' => Auth::id(),
                     ]);
                 }
@@ -281,6 +260,7 @@ class ReturPembelianController extends Controller
                 // ## AKHIR PENCATATAN BARU                                         ##
                 // =====================================================================
             } // End foreach
+
 
             DB::commit();
 

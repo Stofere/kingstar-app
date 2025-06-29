@@ -1,0 +1,5 @@
+{{-- Navigasi khusus untuk Gudang --}}
+<li class="nav-item"><a class="nav-link {{ request()->routeIs('gudang.dashboard') ? 'active' : '' }}" href="{{ route('gudang.dashboard') }}"><i class="bi bi-speedometer2 me-1"></i> Dashboard</a></li>
+<li class="nav-item"><a class="nav-link {{ request()->routeIs('gudang.penerimaan.*') ? 'active' : '' }}" href="{{ route('gudang.penerimaan.index') }}"><i class="bi bi-box-arrow-in-down me-1"></i> Penerimaan Barang</a></li>
+<li class="nav-item"><a class="nav-link {{ request()->routeIs('gudang.stok-opname.*') ? 'active' : '' }}" href="{{ route('gudang.stok-opname.index') }}"><i class="bi bi-clipboard-data me-1"></i> Stok Opname</a></li>
+<li class="nav-item"><a class="nav-link {{ request()->routeIs('perpindahan-stok.*') ? 'active' : '' }}" href="{{ route('perpindahan-stok.index') }}"><i class="bi bi-truck me-1"></i> Perpindahan Stok</a></li>

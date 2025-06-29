@@ -54,6 +54,49 @@
         </div>
     </div>
 </div>
+{{-- MODAL UNTUK PELUNASAN --}}
+<div class="modal fade" id="modalPelunasan" tabindex="-1" aria-labelledby="modalPelunasanLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalPelunasanLabel">Konfirmasi Pelunasan</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="form-pelunasan">
+                <div class="modal-body">
+                    <input type="hidden" id="id_pembelian_lunasi">
+                    <p>Anda akan melunasi pembayaran untuk:</p>
+                    <ul class="list-group mb-3">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            No. Pembelian
+                            <strong id="info_nomor_pembelian"></strong>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            Total Tagihan
+                            <strong id="info_total_harga" class="text-danger"></strong>
+                        </li>
+                    </ul>
+                    <div class="mb-3">
+                        <label for="metode_pembayaran_lunasi" class="form-label required-label">Metode Pembayaran</label>
+                        <select class="form-select" id="metode_pembayaran_lunasi" required>
+                             <option value="TUNAI">Tunai</option>
+                             <option value="TRANSFER_BCA">Transfer BCA</option>
+                             <option value="TRANSFER_MANDIRI">Transfer Mandiri</option>
+                        </select>
+                    </div>
+                     <div class="mb-3">
+                        <label for="tanggal_pelunasan" class="form-label required-label">Tanggal Pelunasan</label>
+                        <input type="date" class="form-control" id="tanggal_pelunasan" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-primary">Konfirmasi Lunas</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 @endsection
 
 @push('scripts')
@@ -124,6 +167,65 @@
                                 Swal.fire('Error!', errorMessage, 'error');
                             }
                         });
+                    }
+                });
+            });
+            
+            // === JAVASCRIPT BARU UNTUK MODAL PELUNASAN ===
+            $('#pembelian-table').on('click', '.btn-lunasi', function() {
+                let idPembelian = $(this).data('id-pembelian');
+                let nomorPembelian = $(this).data('nomor-pembelian');
+                let totalHarga = $(this).data('total-harga');
+
+                // Isi data ke modal
+                $('#id_pembelian_lunasi').val(idPembelian);
+                $('#info_nomor_pembelian').text(nomorPembelian);
+                $('#info_total_harga').text('Rp ' + new Intl.NumberFormat('id-ID').format(totalHarga));
+                $('#tanggal_pelunasan').val(new Date().toISOString().slice(0, 10)); // Set tanggal hari ini
+
+                // Tampilkan modal
+                $('#modalPelunasan').modal('show');
+            });
+
+            // Handle submit form pelunasan
+            $('#form-pelunasan').on('submit', function(e) {
+                e.preventDefault();
+                let idPembelian = $('#id_pembelian_lunasi').val();
+                let url = `/admin/pembelian/${idPembelian}/lunasi`; // Bangun URL secara manual
+                
+                let formData = {
+                    _token: "{{ csrf_token() }}",
+                    metode_pembayaran: $('#metode_pembayaran_lunasi').val(),
+                    tanggal_pelunasan: $('#tanggal_pelunasan').val(),
+                };
+
+                $.ajax({
+                    url: url,
+                    type: 'POST',
+                    data: formData,
+                    beforeSend: function() {
+                        // Tampilkan loading di tombol
+                        $('#form-pelunasan button[type="submit"]').prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Memproses...');
+                    },
+                    success: function(response) {
+                        $('#modalPelunasan').modal('hide');
+                        if (response.success) {
+                            Swal.fire('Berhasil!', response.message, 'success');
+                            $('#pembelian-table').DataTable().ajax.reload(); // Reload tabel
+                        } else {
+                            Swal.fire('Gagal!', response.message, 'error');
+                        }
+                    },
+                    error: function(xhr) {
+                        let errorMsg = 'Terjadi kesalahan. Silakan coba lagi.';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            errorMsg = xhr.responseJSON.message;
+                        }
+                        Swal.fire('Error!', errorMsg, 'error');
+                    },
+                    complete: function() {
+                        // Kembalikan tombol ke state normal
+                        $('#form-pelunasan button[type="submit"]').prop('disabled', false).text('Konfirmasi Lunas');
                     }
                 });
             });

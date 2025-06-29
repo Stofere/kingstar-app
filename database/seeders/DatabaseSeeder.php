@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Pelanggan;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -18,8 +19,10 @@ class DatabaseSeeder extends Seeder
         // Panggil seeder dalam urutan dependensi:
         $this->call([
             PenggunaSeeder::class,     // Buat pengguna dulu (terutama admin)
-            MasterDataSeeder::class,   // Buat Merk, Supplier, Pelanggan
+            SupplierSeeder::class,     // Buat Supplier
+            MerkSeeder::class,
             ProdukSeeder::class,       // Buat produk (membutuhkan Merk)
+            PelangganSeeder::class,    // Buat Pelanggan
         ]);
 
         $this->command->info('Database Seeding Selesai.');

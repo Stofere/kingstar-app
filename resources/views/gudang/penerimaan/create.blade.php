@@ -122,6 +122,11 @@
                                 <th class="text-center" style="width: 10%;">Dipesan</th>
                                 <th class="text-center" style="width: 10%;">Sudah Diterima</th>
                                 <th class="text-center required-label" style="width: 12%;">Diterima Sekarang</th>
+
+                                @if($tipe_penerimaan === 'MANUAL')
+                                    <th style="width: 15%;">Tipe Stok</th>
+                                @endif
+
                                 <th style="width: 12%;">Lokasi</th>
                                 <th style="width: 15%;">Kondisi</th>
                                 <th style="width: 15%;">Tipe Garansi</th>
@@ -181,7 +186,7 @@
                                     </tr>
                                 @endforeach
                             @elseif($tipe_penerimaan === 'MANUAL' && empty(old('items')))
-                                <tr>
+                                <tr id="manual-item-placeholder"> 
                                     <td colspan="9" class="text-center text-muted py-4">Klik tombol "Tambah Item" untuk memulai.</td>
                                 </tr>
                             @endif
@@ -216,6 +221,14 @@
         <td>
             <input type="number" class="form-control item-jumlah-diterima text-end" name="items[__INDEX__][jumlah_diterima_sekarang]" value="1" required min="1" step="1" data-item-index="__INDEX__" data-has-serial="false">
         </td>
+
+         <td>
+            <select class="form-select item-tipe-stok" name="items[__INDEX__][tipe_stok]" required>
+                <option value="REGULER" selected>Reguler</option>
+                <option value="KONSINYASI">Konsinyasi</option>
+            </select>
+        </td>
+
         <td>
             <select class="form-select item-lokasi" name="items[__INDEX__][lokasi]" required>
                  @foreach($lokasiPenyimpanan as $val => $label)
@@ -291,12 +304,29 @@
                 var row = $(this).closest('.detail-item-row');
                 row.data('product-id', data.id);
                 let hasSerial = data.has_serial;
-                row.data('has-serial', hasSerial);
-                row.find('.has-serial-flag').val(hasSerial ? 'true' : 'false');
-                row.find('.item-jumlah-diterima').data('has-serial', hasSerial ? 'true' : 'false'); // Update juga di input jumlah
+                
+                // --- AWAL PERBAIKAN ---
+                // Update data-attribute di DUA tempat: di baris (tr) dan di input jumlah
+                row.data('has-serial', hasSerial); 
+                row.find('.item-jumlah-diterima').data('has-serial', hasSerial); // <<< TAMBAHKAN/PERBAIKI BARIS INI
+                // --- AKHIR PERBAIKAN ---
+
+                // Set default tipe garansi sesuai serial
+                var tipeGaransiSelect = row.find('.item-tipe-garansi');
+                if (!tipeGaransiSelect.data('user-selected')) { // Hanya set jika belum pernah dipilih user
+                    if (hasSerial) {
+                        tipeGaransiSelect.val('RESMI').trigger('change');
+                    } else {
+                        tipeGaransiSelect.val('NONE').trigger('change');
+                    }
+                }
+                // Jika user mengganti, tandai agar tidak diubah otomatis lagi
+                tipeGaransiSelect.off('change._user').on('change._user', function() {
+                    $(this).data('user-selected', true);
+                });
 
                 toggleSerialInputArea(row, hasSerial);
-                updateSerialInputs(row.find('.item-jumlah-diterima')); // Trigger update serial inputs
+                updateSerialInputs(row.find('.item-jumlah-diterima'));
                 row.find('.product-error-feedback').text('');
             }).on('select2:unselect', function (e) {
                 var row = $(this).closest('.detail-item-row');
@@ -357,13 +387,37 @@
 
         // Event listener utama untuk input jumlah
         $('#detail-penerimaan-body').on('input change', '.item-jumlah-diterima', function() {
+            // Batasi nilai input agar tidak melebihi max/min
+            var max = parseInt($(this).attr('max'));
+            var min = parseInt($(this).attr('min')) || 0;
+            var val = parseInt($(this).val()) || 0;
+            if (!isNaN(max) && val > max) {
+                $(this).val(max);
+                val = max;
+            }
+            if (val < min) {
+                $(this).val(min);
+                val = min;
+            }
             updateSerialInputs(this);
         });
 
         // Inisialisasi untuk item PO yang sudah ada
         $('#detail-penerimaan-body .detail-item-row:not(.manual-item)').each(function() {
             const qtyInput = $(this).find('.item-jumlah-diterima');
-            // Hanya panggil updateSerialInputs jika ada qty input (untuk item PO)
+            // Set default tipe garansi sesuai serial
+            var hasSerial = $(this).data('has-serial') === true || $(this).data('has-serial') === 'true';
+            var tipeGaransiSelect = $(this).find('.item-tipe-garansi');
+            if (!tipeGaransiSelect.data('user-selected')) {
+                if (hasSerial) {
+                    tipeGaransiSelect.val('RESMI').trigger('change');
+                } else {
+                    tipeGaransiSelect.val('NONE').trigger('change');
+                }
+            }
+            tipeGaransiSelect.off('change._user').on('change._user', function() {
+                $(this).data('user-selected', true);
+            });
             if(qtyInput.length > 0) {
                 updateSerialInputs(qtyInput);
             }
@@ -380,6 +434,7 @@
 
 
         $('#add-manual-item-btn').on('click', function() {
+            $('#manual-item-placeholder').remove(); 
             let template = $('#manual-item-template').html();
             let newRowHtml = template.replace(/__INDEX__/g, manualItemNextIndex);
             $('#detail-penerimaan-body').append(newRowHtml);
