@@ -91,7 +91,7 @@ Route::middleware(['auth'])->group(function () {
             Route::get('/analisis-harga-beli/{produk}', [\App\Http\Controllers\Admin\LaporanHargaBeliController::class, 'show'])->name('harga_beli.show');
             
             // --- Laporan Stok ---
-            // Grup prefix 'stok' dengan nama grup 'stok.' agar menghasilkan admin.laporan.stok.
+            // Grup e prefix 'stok' dengan nama grup 'stok.' agar menghasilkan admin.laporan.stok.
             Route::prefix('stok')->name('stok.')->group(function () {
 
                 Route::get('/ringkasan-produk', [LaporanStokController::class, 'ringkasanProduk'])->name('ringkasan_produk');
@@ -123,9 +123,12 @@ Route::middleware(['auth'])->group(function () {
 
         Route::prefix('proses-retur-pelanggan')->name('proses_retur_pelanggan.')->group(function () {
             Route::get('/', [ProsesReturPelangganController::class, 'index'])->name('index'); // Daftar retur menunggu tindakan Admin
-            Route::get('/{returPenjualan}/proses', [ProsesReturPelangganController::class, 'showProsesForm'])->name('proses.form'); // Form untuk Admin memutuskan tindak lanjut
-            Route::post('/{returPenjualan}/store-tindakan', [ProsesReturPelangganController::class, 'storeTindakanAdmin'])->name('store.tindakan'); // Menyimpan keputusan Admin
+
+            Route::get('/{detailReturPenjualan}/proses', [ProsesReturPelangganController::class, 'showProsesForm'])->name('proses.form'); // Form untuk Admin memutuskan tindak lanjut
+            Route::post('/{detailReturPenjualan}/store-tindakan', [ProsesReturPelangganController::class, 'storeTindakanAdmin'])->name('store.tindakan'); // Menyimpan keputusan Admin
+            
             Route::get('/{returPenjualan}/show', [ProsesReturPelangganController::class, 'showDetail'])->name('show');
+            Route::get('/{returPenjualan}/nota-retur', [ProsesReturPelangganController::class, 'showNotaRetur'])->name('nota_retur');
         });
 
         // --- ROUTE UNTUK FITUR KONSINYASI ---
@@ -144,6 +147,7 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/ajax/produk/search', [AdminProdukController::class, 'searchAjax'])->name('ajax.produk.search'); // Bisa digunakan oleh berbagai modul Admin
         Route::get('/ajax/supplier/search', [SupplierController::class, 'searchAjax'])->name('ajax.supplier.search');
         Route::get('/ajax/pembelian/generate-number', [PembelianController::class, 'generateNextNumberAjax'])->name('ajax.pembelian.generate_number');
+        Route::get('/ajax/supplier/search', [SupplierController::class, 'searchAjax'])->name('ajax.supplier.search');
     });
 
     // ==================
@@ -164,38 +168,37 @@ Route::middleware(['auth'])->group(function () {
             Route::post('/{penjualan}/store', [KasirPesanBarangController::class, 'storeSelesaikan'])->name('store');
         });
 
-        // ===>>> RUTE UNTUK RETUR PENJUALAN (TERBARU) <<<===
+        // ===>>> RUTE UNTUK RETUR PENJUALAN <<<===
         Route::prefix('retur-penjualan')->name('retur_penjualan.')->group(function () {
             // Langkah 1: Menampilkan daftar retur yang sudah ada
             Route::get('/', [ReturPenjualanController::class, 'index'])->name('index');
-
             // Langkah 2: Form untuk mencari transaksi penjualan yang akan diretur
             Route::get('/cari-transaksi', [ReturPenjualanController::class, 'showCariTransaksiForm'])->name('cari_transaksi');
-
             // Langkah 3: AJAX endpoint untuk mendapatkan detail transaksi berdasarkan nomor nota
             Route::get('/ajax/get-transaksi-detail', [ReturPenjualanController::class, 'getTransaksiDetailAjax'])->name('ajax.get_transaksi_detail');
+            
+            // --- ROUTE UNTUK MEMPROSES ITEM YANG DIPILIH ---
+            Route::post('/pilih-item', [ReturPenjualanController::class, 'processSelectedItems'])->name('pilih_item_proses');
 
             // Langkah 4: Menampilkan form input detail retur setelah transaksi dipilih
-            // Menggunakan route model binding untuk Penjualan
             Route::get('/form/{penjualan}', [ReturPenjualanController::class, 'showReturForm'])->name('form');
-
             // Langkah 5: Menyimpan data retur
-            Route::post('/store/{penjualan}', [ReturPenjualanController::class, 'storeRetur'])->name('store');
+            Route::post('/store/{penjualan}', [ReturPenjualanController::class, 'store'])->name('store');
 
             // Langkah 6: Menampilkan detail satu retur penjualan yang sudah dibuat
             // Menggunakan route model binding untuk ReturPenjualan
             Route::get('/show/{returPenjualan}', [ReturPenjualanController::class, 'show'])->name('show');
+            Route::get('/{returPenjualan}/nota-retur', [ReturPenjualanController::class, 'showNotaRetur'])->name('nota_retur');
 
-            // Langkah 7: Menampilkan form untuk menyelesaikan penukaran barang
-            Route::get('/{returPenjualan}/selesaikan-penukaran', [ReturPenjualanController::class, 'showSelesaikanForm'])->name('selesaikan.form');
+            // Route untuk alur penyerahan barang oleh Kasir (final step)
+            Route::get('/{returPenjualan}/selesaikan-form', [ReturPenjualanController::class, 'showSelesaikanForm'])->name('selesaikan.form');
+            Route::post('/{returPenjualan}/selesaikan-store', [ReturPenjualanController::class, 'storeSelesaikanPenyerahan'])->name('selesaikan.store');
 
-            // Langkah 8: Menyimpan proses penyelesaian penukaran
-            Route::post('/{returPenjualan}/store-penukaran', [ReturPenjualanController::class, 'storeSelesaikanPenukaran'])->name('selesaikan.store');
 
-            // --- ROUTE UNTUK MEMPROSES ITEM YANG DIPILIH ---
-            Route::post('/pilih-item', [ReturPenjualanController::class, 'processSelectedItems'])->name('pilih_item_proses');
+    
 
-            Route::get('/form/{penjualan}', [ReturPenjualanController::class, 'showReturForm'])->name('form');
+            
+            
         });
         
 

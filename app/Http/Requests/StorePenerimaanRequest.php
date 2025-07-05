@@ -24,6 +24,11 @@ class StorePenerimaanRequest extends FormRequest
                 'nullable',
                 'exists:pembelian,id'
             ],
+                'id_retur_pembelian_ref' => [
+                Rule::requiredIf(fn () => $this->input('tipe_penerimaan') === 'RETUR'),
+                'nullable',
+                'exists:retur_pembelian,id' // Pastikan ID-nya ada di tabel retur_pembelian
+            ],
             'diterima_at' => ['required', 'date'],
             'no_surat_jalan' => ['nullable', 'string', 'max:100'],
             'items' => ['required', 'array', 'min:1'], // Minimal 1 item di-submit

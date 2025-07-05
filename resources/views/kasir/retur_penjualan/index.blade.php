@@ -76,12 +76,12 @@
                     { data: 'DT_RowIndex', name: 'DT_RowIndex', orderable: false, searchable: false, className: 'text-center' },
                     { data: 'nomor_retur', name: 'nomor_retur' },
                     { data: 'tanggal_retur_formatted', name: 'tanggal_retur' },
-                    { data: 'nomor_penjualan_asal', name: 'detailPenjualan.penjualan.nomor_penjualan', orderable: false },
-                    { data: 'pelanggan', name: 'detailPenjualan.penjualan.pelanggan.nama', orderable: false },
-                    { data: 'nama_produk', name: 'detailPenjualan.produk.nama', orderable: false },
-                    { data: 'jumlah_retur_formatted', name: 'jumlah_retur', className: 'text-center' },
-                    { data: 'tindakan_lanjut_display', name: 'tindakan_lanjut' },
-                    { data: 'pengguna.nama', name: 'pengguna.nama', orderable: false }, // Kasir yang memproses retur
+                    { data: 'nomor_penjualan_asal', name: 'penjualanAsal.nomor_penjualan' }, // Sesuaikan name untuk searching
+                    { data: 'pelanggan', name: 'penjualanAsal.pelanggan.nama' }, // Sesuaikan name untuk searching
+                    { data: 'produk_diretur', name: 'produk_diretur', orderable: false, searchable: false }, // Nama kolom baru kita
+                    { data: 'jml_diretur', name: 'jml_diretur', orderable: false, searchable: false, className: 'text-center' },
+                    { data: 'tindakan_lanjut', name: 'status_retur', orderable: false, searchable: false }, // Nama kolom baru kita
+                    { data: 'kasir', name: 'pengguna.nama' },
                     { data: 'action', name: 'action', orderable: false, searchable: false, className: 'text-center' }
                 ],
                 language: { /* ... Opsi bahasa DataTables sama seperti sebelumnya ... */

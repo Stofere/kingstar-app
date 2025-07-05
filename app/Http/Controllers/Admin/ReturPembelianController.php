@@ -8,7 +8,7 @@ use App\Models\Pembelian;
 use App\Models\DetailPembelian;
 use App\Models\StokBarang;
 use App\Models\RiwayatPergerakanStok;
-use App\Models\LogNomorSeri;
+use App\Models\DetailReturPembelian;
 use App\Models\Supplier; 
 use App\Models\Produk;   
 use Illuminate\Http\Request;
@@ -54,25 +54,29 @@ class ReturPembelianController extends Controller
     public function searchBatchStokAjax(Request $request)
     {
         $searchTerm = $request->input('q', '');
+        $idSupplier = $request->input('id_supplier'); 
         $page = $request->input('page', 1);
         $limit = 15;
 
         $query = StokBarang::with(['produk', 'supplier'])
-            ->where('jumlah', '>', 0) // Hanya batch yang masih ada stoknya
-            // ->where('kondisi', '!=', 'DIRETUR_KE_SUPPLIER') // Contoh jika ada kondisi khusus
-            ->where(function ($q) use ($searchTerm) {
-                $q->where('id', 'LIKE', "%{$searchTerm}%") // Cari berdasarkan ID Batch
-                  ->orWhereHas('produk', function ($prodQ) use ($searchTerm) {
-                      $prodQ->where('nama', 'LIKE', "%{$searchTerm}%")
+        ->where('jumlah', '>', 0); // Hanya batch yang masih ada stoknya
+            // ### PERBAIKAN UTAMA DI SINI ###
+            // Jika ID supplier dikirim, tambahkan filter ini ke query
+            if ($idSupplier) {
+                $query->where('id_supplier', $idSupplier);
+            }
+            // Filter pencarian berdasarkan keyword 
+            $query->where(function ($q) use ($searchTerm) {
+                $q->where('id', 'LIKE', "%{$searchTerm}%")
+                ->orWhereHas('produk', function ($prodQ) use ($searchTerm) {
+                    $prodQ->where('nama', 'LIKE', "%{$searchTerm}%")
                             ->orWhere('kode_produk', 'LIKE', "%{$searchTerm}%");
-                  })
-                  ->orWhereHas('supplier', function ($supQ) use ($searchTerm) {
-                      $supQ->where('nama', 'LIKE', "%{$searchTerm}%");
-                  });
+                });
+                // Kita tidak perlu lagi mencari berdasarkan nama supplier di sini karena sudah difilter di atas
             });
 
-        $batches = $query->orderBy('diterima_at', 'desc')->orderBy('id', 'desc') // Batch terbaru dulu
-                         ->paginate($limit);
+            $batches = $query->orderBy('diterima_at', 'desc')->orderBy('id', 'desc') // Batch terbaru dulu
+                            ->paginate($limit);
 
         $results = $batches->map(function ($batch) {
             $produkText = $batch->produk ? ($batch->produk->nama . ($batch->produk->kode_produk ? " ({$batch->produk->kode_produk})" : "")) : "Produk Tidak Diketahui";
@@ -168,13 +172,20 @@ class ReturPembelianController extends Controller
         ]);
 
         DB::beginTransaction();
-       
         try {
             $tanggalRetur = Carbon::parse($validated['tanggal_retur']);
-            // Nomor retur bisa dibuat satu per item atau satu per sesi.
-            // Asumsi saat ini satu per sesi (beberapa item dalam 1 form punya nomor sama)
-            $nomorReturPembelianOtomatis = $this->generateNextReturPembelianNumber($tanggalRetur);
+
+            // 1. Buat SATU record Header Retur Pembelian
+            $returHeader = ReturPembelian::create([
+                'nomor_retur' => $this->generateNextReturPembelianNumber($tanggalRetur),
+                'id_pengguna' => Auth::id(),
+                'id_supplier_tujuan' => $validated['id_supplier_tujuan'],
+                'tanggal_retur' => $tanggalRetur,
+                'catatan_internal_retur' => $validated['catatan_global_retur_pembelian'],
+                'status' => 'PROSES',
+            ]);
             
+            // 2. Loop untuk membuat BANYAK record Detail
             foreach ($validated['items_retur'] as $index => $itemReturData) {
                 
                 if ((int)($itemReturData['jumlah_retur'] ?? 0) <= 0) continue;
@@ -195,18 +206,15 @@ class ReturPembelianController extends Controller
                     throw new \Exception("Jumlah nomor seri (".count($serialsDireturInputCleaned).") tidak sesuai jumlah retur ({$jumlahReturSaatIni}) untuk produk '{$produk->nama}'.");
                 }
 
-                // Buat record di retur_pembelian
-                $retur = ReturPembelian::create([
-                    'id_stok_barang' => $stokBarang->id,
-                    'id_pengguna' => Auth::id(),
-                    'nomor_retur' => $nomorReturPembelianOtomatis,
-                    'jumlah_retur' => $jumlahReturSaatIni,
-                    'nomor_seri_diretur' => implode(',', $serialsDireturInputCleaned),
+                // Buat record di tabel detail_retur_pembelian
+                $detailRetur = DetailReturPembelian::create([
+                    'id_retur_pembelian' => $returHeader->id, // Link ke header
+                    'id_stok_barang' => $itemReturData['id_stok_barang'],
+                    'jumlah_retur' => $itemReturData['jumlah_retur'],
+                    'nomor_seri_diretur' => implode(',', $itemReturData['nomor_seri_diretur'] ?? []),
                     'alasan_retur' => $itemReturData['alasan_retur'],
-                    'catatan_ke_supplier' => $itemReturData['catatan_ke_supplier_item'] ?? null,
                     'tindakan_lanjut_supplier' => $itemReturData['tindakan_lanjut_supplier'],
-                    'catatan_internal_retur' => ($index === 0) ? $validated['catatan_global_retur_pembelian'] : null,
-                    'tanggal_retur' => $tanggalRetur,
+                    'catatan_ke_supplier' => $itemReturData['catatan_ke_supplier_item'] ?? null,
                 ]);
 
                 // 1. Kurangi Stok Fisik pada Batch
@@ -215,7 +223,8 @@ class ReturPembelianController extends Controller
                 // =====================================================================
                 // ## PENCATATAN BARU KE RIWAYAT PERGERAKAN STOK (REVISI FINAL)       ##
                 // =====================================================================
-                $keteranganRiwayat = 'Diretur ke Supplier (' . ($stokBarang->supplier->nama ?? 'N/A') . ')';
+                $keteranganRiwayat = 'Pengembalian barang ke Supplier: ' . ($stokBarang->supplier->nama ?? 'N/A');
+                $tipeTransaksiRiwayat = 'RETUR_KE_SUPPLIER';
 
                 if ($produk->memiliki_serial && !empty($serialsDireturInputCleaned)) {
                     // Jika BERSERIAL, buat satu baris untuk setiap nomor seri
@@ -226,12 +235,12 @@ class ReturPembelianController extends Controller
                             'id_produk' => $produk->id,
                             'id_stok_barang_terkait' => $stokBarang->id,
                             'nomor_seri' => $snRetur,
-                            'tipe_transaksi' => 'RETUR_SUPPLIER',
+                            'tipe_transaksi' => $tipeTransaksiRiwayat,
                             'jumlah_masuk' => 0,
                             'jumlah_keluar' => 1, // Selalu 1 untuk pergerakan serial
                             'saldo_setelah_transaksi' => $saldoTerakhir - 1,
-                            'id_referensi' => $retur->id,
-                            'tipe_referensi' => get_class($retur),
+                            'id_referensi' => $returHeader->id,
+                            'tipe_referensi' => get_class($returHeader),
                             'tanggal_transaksi' => $tanggalRetur,
                             'keterangan' => $keteranganRiwayat,
                             'id_pengguna' => Auth::id(),
@@ -245,12 +254,12 @@ class ReturPembelianController extends Controller
                         'id_produk' => $produk->id,
                         'id_stok_barang_terkait' => $stokBarang->id,
                         'nomor_seri' => null,
-                        'tipe_transaksi' => 'RETUR_SUPPLIER',
+                        'tipe_transaksi' => $tipeTransaksiRiwayat,
                         'jumlah_masuk' => 0,
                         'jumlah_keluar' => $jumlahReturSaatIni,
                         'saldo_setelah_transaksi' => $saldoTerakhir - $jumlahReturSaatIni,
-                        'id_referensi' => $retur->id,
-                        'tipe_referensi' => get_class($retur),
+                        'id_referensi' => $returHeader->id,
+                        'tipe_referensi' => get_class($returHeader),
                         'tanggal_transaksi' => $tanggalRetur,
                         'keterangan' => $keteranganRiwayat,
                         'id_pengguna' => Auth::id(),
@@ -265,7 +274,7 @@ class ReturPembelianController extends Controller
             DB::commit();
 
             return redirect()->route('admin.retur_pembelian.index')
-                             ->with('success', "Retur Pembelian ({$nomorReturPembelianOtomatis}) ke supplier berhasil disimpan.");
+                             ->with('success', "Retur Pembelian ({$returHeader->nomor_retur}) ke supplier berhasil disimpan.");
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -299,47 +308,60 @@ class ReturPembelianController extends Controller
     {
         if ($request->ajax()) {
             $query = ReturPembelian::with([
-                            'stokBarang.produk', // Produk dari batch yang diretur
-                            'stokBarang.supplier', // Supplier dari batch yang diretur (supplier asal batch)
-                            'pengguna' // Admin yang memproses retur
-                        ])
-                        ->select('retur_pembelian.*')
-                        ->orderBy('retur_pembelian.tanggal_retur', 'desc')
-                        ->orderBy('retur_pembelian.id', 'desc');
+                'pengguna',
+                'supplier',
+                'detailReturPembelian', // Dibutuhkan untuk menghitung total
+                // ### RELASI BARU: Cek apakah sudah ada penerimaan ###
+                'penerimaanPengganti'
+            ])->select('retur_pembelian.*');
 
             return DataTables::of($query)
                 ->addIndexColumn()
-                ->addColumn('nama_produk', function($row){
-                    return $row->stokBarang->produk->nama ?? '-';
+                ->addColumn('tanggal_retur_formatted', fn ($row) => Carbon::parse($row->tanggal_retur)->isoFormat('D MMM YYYY, HH:mm'))
+                ->addColumn('supplier_tujuan', fn($row) => $row->supplier->nama ?? 'N/A')
+                ->addColumn('total_jumlah_retur', function($row){
+                    return $row->detailReturPembelian->sum('jumlah_retur') . ' unit';
                 })
-                ->addColumn('supplier_asal_batch', function($row){ // Supplier dari batch yang diretur
-                    return $row->stokBarang->supplier->nama ?? 'N/A (Batch)';
+
+                // ### LOGIKA STATUS DINAMIS BARU ###
+                ->addColumn('status_display', function($row) {
+                    // Ambil status dari header nota retur
+                    $statusHeader = $row->status; 
+                    // Ambil status dari item pertama untuk tahu tindakan supplier
+                    $tindakanSupplier = $row->detailReturPembelian->first()->tindakan_lanjut_supplier ?? 'PROSES';
+
+                    if ($statusHeader === 'PROSES') {
+                        return '<span class="badge bg-warning text-dark">Proses</span>';
+                    }
+                    
+                    if ($tindakanSupplier === 'SELESAI_DIGANTI') {
+                        // Jika akan diganti, cek apakah sudah ada penerimaan
+                        if ($row->penerimaanPengganti->isNotEmpty()) {
+                            return '<span class="badge bg-success">Selesai (Diterima)</span>';
+                        } else {
+                            return '<span class="badge bg-primary">Menunggu Barang</span>';
+                        }
+                    }
+                    
+                    // Untuk kasus refund atau ditolak
+                    if (in_array($tindakanSupplier, ['SELESAI_DIREFUND', 'DITOLAK_SUPPLIER'])) {
+                        return '<span class="badge bg-success">Selesai</span>';
+                    }
+
+                    // Fallback
+                    return '<span class="badge bg-secondary">' . e($statusHeader) . '</span>';
                 })
-                ->editColumn('tanggal_retur_formatted', function ($row) {
-                    return Carbon::parse($row->tanggal_retur)->isoFormat('D MMM YYYY, HH:mm');
-                })
-                ->addColumn('jumlah_retur_formatted', function ($row) {
-                    return $row->jumlah_retur . ' unit';
-                })
-                ->addColumn('tindakan_lanjut_supplier_display', function($row){
-                    // Anda bisa buat helper atau array mapping untuk display nama yang lebih baik
-                    // Ini adalah opsi yang dipilih saat retur, bukan status update dari supplier
-                    $options = [
-                        'MENUNGGU_RESPONS_SUPPLIER' => 'Menunggu Respons Supplier',
-                        'PROSES_PENGGANTIAN_BARANG' => 'Diajukan Penggantian',
-                        'PROSES_REFUND_UANG' => 'Diajukan Refund',
-                    ];
-                    return $options[$row->tindakan_lanjut_supplier] ?? ucwords(str_replace('_', ' ', $row->tindakan_lanjut_supplier));
-                })
-                ->addColumn('admin_proses', function($row){
-                    return $row->pengguna->nama ?? '-';
-                })
+                
+                ->addColumn('admin_proses', fn($row) => $row->pengguna->nama ?? '-')
                 ->addColumn('action', function ($row) {
-                    $btnShow = '<a href="' . route('admin.retur_pembelian.show', $row->id) . '" class="btn btn-info btn-sm me-1" title="Lihat Detail Retur"><i class="bi bi-eye"></i></a>';
-                    // Jika ada status update dari supplier, mungkin ada tombol edit status di sini
-                    return $btnShow;
+                    $btnShow = '<a href="' . route('admin.retur_pembelian.show', $row->id) . '" class="btn btn-info btn-sm me-1" title="Lihat Detail"><i class="bi bi-eye"></i></a>';
+                    $btnEdit = '';
+                    if ($row->status === 'PROSES') {
+                        $btnEdit = '<a href="' . route('admin.retur_pembelian.edit', $row->id) . '" class="btn btn-warning btn-sm" title="Update Status"><i class="bi bi-pencil-square"></i></a>';
+                    }
+                    return $btnShow . $btnEdit;
                 })
-                ->rawColumns(['action', 'tindakan_lanjut_supplier_display'])
+                ->rawColumns(['action', 'status_display'])
                 ->make(true);
         }
         return view('admin.retur_pembelian.index');
@@ -348,34 +370,28 @@ class ReturPembelianController extends Controller
     /**
      * Menampilkan detail satu retur pembelian.
      */
-    public function show(ReturPembelian $returPembelian) // Route model binding
+    public function show(ReturPembelian $returPembelian)
     {
+        // Memuat semua relasi yang dibutuhkan oleh view show
         $returPembelian->load([
-            'stokBarang.produk',
-            'stokBarang.supplier', // Supplier asal batch
             'pengguna',
-            // Jika retur pembelian terkait dengan PO asal, Anda mungkin ingin menampilkan info PO tersebut
-            // Ini memerlukan relasi dari StokBarang -> DetailPembelian -> Pembelian
-            'stokBarang.detailPembelian.pembelian'
+            'supplier', // Supplier tujuan
+            'detailReturPembelian.stokBarang.produk', // Detail -> batch -> produk
+            'penerimaanPengganti' // ### TAMBAHKAN RELASI INI ###
         ]);
         return view('admin.retur_pembelian.show', compact('returPembelian'));
     }
 
     public function edit(ReturPembelian $returPembelian) // Route Model Binding
     {
-        // Validasi apakah retur ini boleh diupdate statusnya
-        $statusFinal = ['SELESAI_DIGANTI', 'SELESAI_DIREFUND', 'DITOLAK_SUPPLIER'];
-        if (in_array($returPembelian->tindakan_lanjut_supplier, $statusFinal)) {
-            return redirect()->route('admin.retur_pembelian.index')->with('info', 'Retur pembelian ini sudah memiliki status tindak lanjut final dan tidak dapat diedit.');
+        if ($returPembelian->status !== 'PROSES') {
+            return redirect()->route('admin.retur_pembelian.index')->with('info', 'Retur ini sudah final dan tidak dapat diedit.');
         }
 
-        $returPembelian->load(['stokBarang.produk', 'stokBarang.supplier', 'pengguna']);
+        $returPembelian->load(['supplier', 'detailReturPembelian.stokBarang.produk']);
 
         // Opsi status tindak lanjut final dari supplier
         $tindakanLanjutSupplierFinalOptions = [
-            'MENUNGGU_RESPONS_SUPPLIER' => 'Menunggu Respons Supplier', // Mungkin ini status awal
-            'PROSES_PENGGANTIAN_BARANG' => 'Diajukan/Proses Penggantian Barang',
-            'PROSES_REFUND_UANG' => 'Diajukan/Proses Refund Uang',
             'SELESAI_DIGANTI' => 'SELESAI - Barang Sudah Diganti Supplier',
             'SELESAI_DIREFUND' => 'SELESAI - Sudah Direfund Supplier',
             'DITOLAK_SUPPLIER' => 'DITOLAK oleh Supplier',
@@ -386,44 +402,40 @@ class ReturPembelianController extends Controller
 
     public function update(Request $request, ReturPembelian $returPembelian)
     {
-        $statusFinalSebelumnya = ['SELESAI_DIGANTI', 'SELESAI_DIREFUND', 'DITOLAK_SUPPLIER'];
-        if (in_array($returPembelian->tindakan_lanjut_supplier, $statusFinalSebelumnya)) {
-            return redirect()->route('admin.retur_pembelian.index')->with('info', 'Retur pembelian ini sudah memiliki status tindak lanjut final dan tidak dapat diedit.');
-        }
-
+        // Validasi status final saja
         $validated = $request->validate([
-            'tindakan_lanjut_supplier' => 'required|string|max:100', // Validasi dengan key dari $tindakanLanjutSupplierFinalOptions
-            'catatan_ke_supplier' => 'nullable|string|max:1000',
+            'tindakan_lanjut_supplier' => ['required', 'string', Rule::in(['SELESAI_DIGANTI', 'SELESAI_DIREFUND', 'DITOLAK_SUPPLIER'])],
             'catatan_internal_retur' => 'nullable|string|max:1000',
         ]);
 
         DB::beginTransaction();
         try {
-            $returPembelian->tindakan_lanjut_supplier = $validated['tindakan_lanjut_supplier'];
-            if ($request->filled('catatan_ke_supplier')) {
-                $returPembelian->catatan_ke_supplier = $validated['catatan_ke_supplier'];
+            // Update status di setiap detail
+            foreach($returPembelian->detailReturPembelian as $detail) {
+                $detail->tindakan_lanjut_supplier = $validated['tindakan_lanjut_supplier'];
+                $detail->save();
             }
-            if ($request->filled('catatan_internal_retur')) {
-                $returPembelian->catatan_internal_retur = $validated['catatan_internal_retur'];
-            }
+            
+            // Update status header menjadi selesai dan tambahkan catatan
+            $returPembelian->status = 'SELESAI';
+            $catatanLama = $returPembelian->catatan_internal_retur ? $returPembelian->catatan_internal_retur . "\n" : "";
+            $returPembelian->catatan_internal_retur = $catatanLama . "[ADMIN-UPDATE] " . ($validated['catatan_internal_retur'] ?? 'Status diperbarui.');
             $returPembelian->save();
-
-           
+            
+            // Berikan pesan khusus jika barang akan diganti
             if ($validated['tindakan_lanjut_supplier'] === 'SELESAI_DIGANTI') {
-
-                session()->flash('info_barang_pengganti', "Status retur pembelian {$returPembelian->nomor_retur} diupdate. Jangan lupa catat penerimaan untuk barang pengganti dari supplier jika sudah datang.");
+                session()->flash('info_barang_pengganti', 
+                    "Status retur #{$returPembelian->nomor_retur} telah diupdate menjadi 'Selesai Diganti'. " .
+                    "JANGAN LUPA untuk mencatat penerimaan barang pengganti melalui menu 'Penerimaan Barang' saat barang fisik tiba."
+                );
             }
 
             DB::commit();
-        
-            return redirect()->route('admin.retur_pembelian.index')->with('success', "Tindak lanjut untuk Retur Pembelian No. {$returPembelian->nomor_retur} berhasil diperbarui.");
+            return redirect()->route('admin.retur_pembelian.index')->with('success', "Status untuk Retur #{$returPembelian->nomor_retur} berhasil diperbarui.");
 
         } catch (\Exception $e) {
             DB::rollBack();
-        
-            return redirect()->back()->with('error', 'Gagal memperbarui tindak lanjut retur: ' . $e->getMessage())->withInput();
+            return redirect()->back()->with('error', 'Gagal memperbarui status retur: ' . $e->getMessage())->withInput();
         }
     }
-
-
 }

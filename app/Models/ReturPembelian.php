@@ -8,25 +8,14 @@ use Illuminate\Database\Eloquent\Model;
 class ReturPembelian extends Model
 {
     use HasFactory;
-
     protected $table = 'retur_pembelian';
-
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var array<int, string>
-     */
     protected $fillable = [
-        'nomor_retur',       
-        'id_stok_barang',
+        'nomor_retur',
         'id_pengguna',
-        'jumlah_retur',
-        'nomor_seri_diretur',
-        'alasan_retur',        
-        'catatan_ke_supplier', 
-        'tindakan_lanjut_supplier', 
-        'catatan_internal_retur', 
+        'id_supplier_tujuan',
         'tanggal_retur',
+        'catatan_internal_retur',
+        'status',
     ];
 
     /**
@@ -47,6 +36,17 @@ class ReturPembelian extends Model
         return $this->belongsTo(StokBarang::class, 'id_stok_barang');
     }
 
+    public function supplier()
+    {
+        return $this->belongsTo(Supplier::class, 'id_supplier_tujuan');
+    }
+
+    // Relasi ke detail (satu header punya banyak detail)
+    public function detailReturPembelian()
+    {
+        return $this->hasMany(DetailReturPembelian::class, 'id_retur_pembelian');
+    }
+
     /**
      * Mendapatkan pengguna (Admin) yang memproses retur pembelian ini.
      */
@@ -55,9 +55,11 @@ class ReturPembelian extends Model
         return $this->belongsTo(Pengguna::class, 'id_pengguna');
     }
 
-    // === OPSIONAL: Accessor dan Mutator untuk nomor_seri_diretur ===
-    // Jika Anda ingin bekerja dengan nomor_seri_diretur sebagai array di kode PHP
-    // meskipun di database disimpan sebagai string comma-separated.
+    public function penerimaanPengganti()
+    {
+        // Sebuah nota retur bisa memiliki banyak riwayat penerimaan pengganti (meski jarang)
+        return $this->hasMany(RiwayatPergerakanStok::class, 'id_referensi')->where('tipe_referensi', self::class)->where('tipe_transaksi', 'PENERIMAAN_PENGGANTI_RETUR');
+    }
 
     /**
      * Accessor: Mendapatkan nomor_seri_diretur sebagai array.
@@ -90,8 +92,7 @@ class ReturPembelian extends Model
 
     public function poPengganti()
     {
-        // Asumsi kita menyimpan 'replacement_po_id:123' di catatan internal
-        // Ini cara tanpa mengubah skema DB.
+        // Asumsi menyimpan 'replacement_po_id:123' di catatan internal
         return $this->belongsTo(Pembelian::class, 'catatan_internal_retur');
     }
 }

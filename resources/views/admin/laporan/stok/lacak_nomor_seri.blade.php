@@ -70,7 +70,7 @@
                         <tr>
                             <th>Tanggal</th>
                             <th>Jenis Transaksi</th>
-                            <th>No. Dokumen</th>
+                            <th>No. Referensi</th>
                             <th class="text-center">Masuk</th>
                             <th class="text-center">Keluar</th>
                             <th>Keterangan Tambahan</th>

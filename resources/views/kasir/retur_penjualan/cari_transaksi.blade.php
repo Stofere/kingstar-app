@@ -7,6 +7,7 @@
     .item-info-retur { padding: 0.75rem; border-bottom: 1px solid #eee; }
     .item-info-retur:last-child { border-bottom: none; }
     .item-info-retur strong { display: block; margin-bottom: .25rem; } /* Membuat nama produk lebih menonjol */
+    .list-group-item-action { cursor: pointer; }
 </style>
 @endpush
 
@@ -102,11 +103,11 @@
 
                     if (response.success) {
                         const penjualan = response.penjualan;
-                        const detailItems = response.detail_items_info; // Sesuai dengan key dari controller
 
+                        // Menampilkan info header transaksi
                         let detailHtml = `<h5>Detail Transaksi Ditemukan:</h5>
                                           <p class="mb-1"><strong>No. Nota:</strong> ${penjualan.nomor_penjualan}</p>
-                                          <p class="mb-1"><strong>Tanggal:</strong> ${penjualan.tanggal_penjualan_formatted}</p> {{-- Menggunakan key yang sudah diformat --}}
+                                          <p class="mb-1"><strong>Tanggal:</strong> ${penjualan.tanggal_penjualan_formatted}</p>
                                           <p class="mb-0"><strong>Pelanggan:</strong> ${penjualan.pelanggan_nama}</p>`;
                         $('#detail-transaksi-content').html(detailHtml);
 
@@ -115,16 +116,22 @@
                         if (response.detail_items_info && response.detail_items_info.length > 0) {
                             itemsHtml += '<div class="list-group">';
                             response.detail_items_info.forEach(function(item) {
+                                let displayName = `<strong>${item.nama_produk}</strong>`;
+                                let valueForCheckbox = item.is_serial ? `${item.id_dpsa}|${item.nomor_seri}` : item.id_dpsa;
+                                let infoQty = item.is_serial ? 
+                                    '<small class="d-block text-success">Bisa diretur: 1 unit</small>' : 
+                                    `<small class="d-block text-success">Bisa diretur: ${item.sisa_qty_bisa_diretur_item} unit</small>`;
+                                    
                                 itemsHtml += `
                                 <label class="list-group-item list-group-item-action d-flex align-items-center">
-                                    <input class="form-check-input me-3 item-retur-checkbox" type="checkbox" name="selected_items[]" value="${item.id_detail_penjualan}">
+                                    <input class="form-check-input me-3 item-retur-checkbox" type="checkbox" name="selected_items[]" value="${valueForCheckbox}">
                                     <div>
-                                        <strong>${item.nama_produk}</strong>
-                                        <small class="d-block text-success">Sisa bisa diretur: ${item.sisa_qty_bisa_diretur_item} unit</small>
-                                        ${item.produk_memiliki_serial ? `<small class="d-block text-info">Serial bisa diretur: ${item.serials_yang_masih_bisa_diretur.length > 0 ? item.serials_yang_masih_bisa_diretur.join(', ') : '-'}</small>` : ''}
+                                        ${displayName}
+                                        ${infoQty}
+                                        <small class="d-block text-muted">${item.info_batch}</small>
                                     </div>
                                 </label>`;
-                        });
+                            });
                         itemsHtml += '</div>';
                             $('#area-tombol-lanjut-retur').show();
                         } else {
@@ -132,6 +139,8 @@
                         }
                         $('#item-retur-list').html(itemsHtml);
                         $('#hasil-pencarian-container').show();
+
+                        // Event listener untuk mengaktifkan/menonaktifkan tombol lanjut
                         $('.item-retur-checkbox').on('change', function() {
                             if ($('.item-retur-checkbox:checked').length > 0) {
                                 $('#btn-lanjut-ke-form-retur').prop('disabled', false);

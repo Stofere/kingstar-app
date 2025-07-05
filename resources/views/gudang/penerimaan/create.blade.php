@@ -1,15 +1,21 @@
-@extends('layouts.app')
-
 @php
-    // Logika judul dinamis
+    $isFromPo = ($tipe_penerimaan === 'PO');
+    $isFromRetur = ($tipe_penerimaan === 'RETUR');
+    $isManual = ($tipe_penerimaan === 'MANUAL');
+
+    // Tentukan peran pengguna
+    $isAdmin = Auth::check() && Auth::user()->role === 'ADMIN';
+    
+    // Menentukan judul halaman dinamis
     $title = 'Buat Penerimaan Manual (Stok Lama)';
-    if ($tipe_penerimaan === 'PO') {
-        $title = 'Proses Penerimaan dari PO: ' . $selectedPembelian->nomor_pembelian;
-    } elseif ($tipe_penerimaan === 'RETUR') {
-        $title = 'Proses Penerimaan Barang Pengganti dari Retur: ' . $selectedPembelian->nomor_pembelian;
+    if ($isFromPo) {
+        $title = 'Proses Penerimaan dari PO: ' . $sumberData->nomor_referensi;
+    } elseif ($isFromRetur) {
+        $title = 'Penerimaan Barang Pengganti (Ref. Retur: ' . $sumberData->nomor_referensi . ')';
     }
 @endphp
 
+@extends('layouts.app')
 @section('title', $title)
 
 @push('styles')
@@ -45,54 +51,53 @@
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
     @endif
+
     @if(session('error'))
         <div class="alert alert-danger alert-dismissible fade show" role="alert">
             <i class="bi bi-exclamation-triangle-fill me-2"></i> {{ session('error') }}
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     @endif
-    @if($tipe_penerimaan === 'RETUR' && isset($selectedPembelian))
+
+    @if($isFromRetur)
     <div class="alert alert-success mb-4">
         <i class="bi bi-info-circle-fill me-2"></i>
-        <strong>INFO:</strong> Ini adalah penerimaan untuk barang pengganti. Pastikan barang dan jumlahnya sesuai.
-        <br>
-        <small>Catatan Asal PO: {{ $selectedPembelian->catatan }}</small>
+        <strong>INFO:</strong> Ini adalah penerimaan untuk barang pengganti. Pastikan barang dan jumlahnya sesuai dengan nota retur.
     </div>
     @endif
 
     <form action="{{ route('gudang.penerimaan.store') }}" method="POST" id="form-penerimaan">
         @csrf
         <input type="hidden" name="tipe_penerimaan" value="{{ $tipe_penerimaan }}">
-        @if(isset($selectedPembelian))
-            <input type="hidden" name="id_pembelian" value="{{ $selectedPembelian->id }}">
+        
+        {{-- Input tersembunyi untuk ID referensi --}}
+        @if($isFromPo)
+            <input type="hidden" name="id_pembelian" value="{{ $sumberData->id }}">
+        @elseif($isFromRetur)
+            <input type="hidden" name="id_retur_pembelian_ref" value="{{ $sumberData->id }}">
         @endif
 
-         {{-- Informasi Header Penerimaan --}}
+        {{-- Informasi Header Penerimaan --}}
         <div class="card shadow-sm mb-4">
-            <div class="card-header bg-light">
-                <h5 class="mb-0">Informasi Umum Penerimaan</h5>
-            </div>
+            <div class="card-header bg-light"><h5 class="mb-0">Informasi Umum Penerimaan</h5></div>
             <div class="card-body">
                 <div class="row g-3">
                     <div class="col-md-4">
                         <label class="form-label">Tipe Penerimaan</label>
                         <input type="text" class="form-control" value="{{ strtoupper(str_replace('_', ' ', $tipe_penerimaan)) }}" readonly>
                     </div>
-
                     <div class="col-md-4">
-                        <label class="form-label">Supplier</label>
-                        @if($tipe_penerimaan === 'PO' || $tipe_penerimaan === 'RETUR')
-                            <input type="text" class="form-control" value="{{ $selectedPembelian->supplier->nama ?? 'N/A' }}" readonly>
-                        @else {{-- Mode MANUAL --}}
-                            <select class="form-select select2-supplier" name="id_supplier_manual" data-placeholder="Pilih Supplier (Opsional)">
-                                <option value=""></option>
-                                @foreach ($suppliers as $id => $nama)
-                                    <option value="{{ $id }}" {{ old('id_supplier_manual') == $id ? 'selected' : '' }}>{{ $nama }}</option>
-                                @endforeach
+                        <label class="form-label required-label">Supplier</label>
+                        @if($isManual)
+                            <select class="form-select select2-supplier" name="id_supplier_manual" data-placeholder="Pilih Supplier..." required>
+                                <option></option>
+                                {{-- Opsi diisi oleh Select2 AJAX --}}
                             </select>
+                        @else
+                            <input type="text" class="form-control" value="{{ $sumberData->supplier->nama ?? 'N/A' }}" readonly>
+                            <input type="hidden" name="id_supplier_manual" value="{{ $sumberData->supplier->id ?? '' }}">
                         @endif
                     </div>
-
                     <div class="col-md-4">
                         <label for="diterima_at" class="form-label required-label">Tanggal Penerimaan Fisik</label>
                         <input type="datetime-local" class="form-control @error('diterima_at') is-invalid @enderror" id="diterima_at" name="diterima_at" value="{{ old('diterima_at', now()->format('Y-m-d\TH:i')) }}" required>
@@ -106,10 +111,11 @@
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-light d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Detail Item Diterima</h5>
-                @if($tipe_penerimaan === 'MANUAL')
-                <button type="button" class="btn btn-success btn-sm" id="add-manual-item-btn">
-                    <i class="bi bi-plus-circle"></i> Tambah Item
-                </button>
+                {{-- Tombol tambah hanya muncul untuk Manual --}}
+                @if($isManual)
+                    <button type="button" class="btn btn-success btn-sm" id="add-manual-item-btn">
+                        <i class="bi bi-plus-circle"></i> Tambah Item
+                    </button>
                 @endif
             </div>
             <div class="card-body">
@@ -117,62 +123,74 @@
                     <table class="table table-bordered table-detail-penerimaan" id="detail-penerimaan-table">
                         <thead class="table-light align-middle">
                             <tr>
-                                @if($tipe_penerimaan === 'MANUAL') <th class="text-center" style="width: 5%;">Aksi</th> @endif
+                                @if($isManual) <th class="text-center" style="width: 5%;">Aksi</th> @endif
                                 <th style="min-width: 200px;">Produk</th>
-                                <th class="text-center" style="width: 10%;">Dipesan</th>
-                                <th class="text-center" style="width: 10%;">Sudah Diterima</th>
-                                <th class="text-center required-label" style="width: 12%;">Diterima Sekarang</th>
-
-                                @if($tipe_penerimaan === 'MANUAL')
-                                    <th style="width: 15%;">Tipe Stok</th>
+                                <th class="text-center" style="width: 10%;">Qty Dipesan</th>
+                                <th class="text-center" style="width: 10%;">Sdh Diterima</th>
+                                <th class="text-center required-label" style="width: 12%;">Diterima Skrg</th>
+                                @if($isAdmin)
+                                    <th style="width: 15%;">Harga Beli Satuan</th>
                                 @endif
-
+                                @if($isManual) <th style="width: 15%;">Tipe Stok</th> @endif
                                 <th style="width: 12%;">Lokasi</th>
-                                <th style="width: 15%;">Kondisi</th>
-                                <th style="width: 15%;">Tipe Garansi</th>
+                                <th style="width: 12%;">Kondisi</th>
+                                <th style="width: 12%;">Tipe Garansi</th>
                                 <th style="min-width: 250px;">Nomor Seri (jika ada)</th>
                             </tr>
                         </thead>
                         <tbody id="detail-penerimaan-body">
-                            {{-- Render item dari PO atau PO Retur --}}
-                            @if(!empty($detailItems))
-                                @foreach($detailItems as $index => $item)
-                                    <tr class="detail-item-row" data-index="{{ $index }}" data-product-id="{{ $item['id_produk'] }}" data-has-serial="{{ $item['memiliki_serial'] ? 'true' : 'false' }}">
-                                        <input type="hidden" name="items[{{ $index }}][id_detail_pembelian]" value="{{ $item['id_detail_pembelian'] }}">
-                                        <input type="hidden" name="items[{{ $index }}][id_produk]" value="{{ $item['id_produk'] }}">
+                            {{-- Render item dari PO atau Retur --}}
+                            @if($sumberData && count($sumberData->items) > 0)
+                                @foreach($sumberData->items as $item)
+                                    @php
+                                        $id_produk = $item->produk->id;
+                                        $memiliki_serial = (bool)$item->produk->memiliki_serial;
+                                    @endphp
+                                    <tr class="detail-item-row" data-index="{{ $id_produk }}" data-product-id="{{ $id_produk }}" data-has-serial="{{ $memiliki_serial ? 'true' : 'false' }}">
+                                        @if($isFromPo)
+                                            <input type="hidden" name="items[{{ $id_produk }}][id_detail_pembelian]" value="{{ $item->id_detail_pembelian }}">
+                                        @endif
+                                        <input type="hidden" name="items[{{ $id_produk }}][id_produk]" value="{{ $id_produk }}">
                                         <td>
-                                            {{ $item['nama_produk'] }}
-                                            @if($item['memiliki_serial']) <span class="badge bg-info ms-1">SERIAL</span> @endif
+                                            {{ $item->produk->nama }}
+                                            @if($memiliki_serial) <span class="badge bg-info ms-1">SERIAL</span> @endif
                                         </td>
-                                        <td class="text-center">{{ $item['jumlah_pesan'] }}</td>
-                                        <td class="text-center">{{ $item['jumlah_sudah_diterima'] }}</td>
+                                        <td class="text-center">{{ $item->jumlah_pesan }}</td>
+                                        <td class="text-center">{{ $item->jumlah_sudah_diterima }}</td>
                                         <td>
-                                            <input type="number" class="form-control item-jumlah-diterima text-end @error('items.'.$index.'.jumlah_diterima_sekarang') is-invalid @enderror"
-                                                   name="items[{{ $index }}][jumlah_diterima_sekarang]"
-                                                   value="{{ old('items.'.$index.'.jumlah_diterima_sekarang', 0) }}"
-                                                   required min="0" max="{{ $item['jumlah_belum_diterima'] }}"
-                                                   data-item-index="{{ $index }}"
-                                                   data-has-serial="{{ $item['memiliki_serial'] ? 'true' : 'false' }}">
+                                            <input type="number" class="form-control item-jumlah-diterima text-end"
+                                                   name="items[{{ $id_produk }}][jumlah_diterima_sekarang]"
+                                                   value="{{ old('items.'.$id_produk.'.jumlah_diterima_sekarang', $item->jumlah_belum_diterima) }}"
+                                                   required min="0" max="{{ $item->jumlah_belum_diterima }}"
+                                                   data-item-index="{{ $id_produk }}"
+                                                   data-has-serial="{{ $memiliki_serial ? 'true' : 'false' }}">
                                         </td>
+
+                                        @if($isAdmin)
+                                            <td>
+                                                <div class="input-group input-group-sm">
+                                                    <span class="input-group-text">Rp</span>
+                                                    <input type="number" class="form-control text-end" name="items[{{ $id_produk }}][harga_beli]" value="{{ old('items.'.$id_produk.'.harga_beli', $item->harga_beli_awal ?? 0) }}" min="0" required>
+                                                </div>
+                                            </td>
+                                        @else
+                                            {{-- Untuk GUDANG, kirim harga lama sebagai hidden agar tidak error validasi --}}
+                                            <input type="hidden" name="items[{{ $id_produk }}][harga_beli]" value="{{ $item->harga_beli_awal ?? 0 }}">
+                                        @endif
+                                        
                                         <td>
-                                            <select class="form-select item-lokasi" name="items[{{ $index }}][lokasi]" required>
-                                                @foreach($lokasiPenyimpanan as $val => $label)
-                                                    <option value="{{ $val }}" {{ 'GUDANG' == $val ? 'selected' : '' }}>{{ $label }}</option>
-                                                @endforeach
+                                            <select class="form-select form-select-sm item-lokasi" name="items[{{ $id_produk }}][lokasi]" required>
+                                                <option value="GUDANG" selected>GUDANG</option><option value="TOKO">TOKO</option>
                                             </select>
                                         </td>
                                         <td>
-                                            <select class="form-select item-kondisi" name="items[{{ $index }}][kondisi]" required>
-                                                @foreach($kondisiBarang as $val => $label)
-                                                    <option value="{{ $val }}" {{ 'BAIK' == $val ? 'selected' : '' }}>{{ $label }}</option>
-                                                @endforeach
+                                            <select class="form-select form-select-sm item-kondisi" name="items[{{ $id_produk }}][kondisi]" required>
+                                                <option value="BAIK" selected>BAIK</option><option value="RUSAK">RUSAK</option>
                                             </select>
                                         </td>
                                         <td>
-                                             <select class="form-select item-tipe-garansi" name="items[{{ $index }}][tipe_garansi]" required>
-                                                @foreach($tipeGaransi as $val => $label)
-                                                    <option value="{{ $val }}" {{ 'NONE' == $val ? 'selected' : '' }}>{{ $label }}</option>
-                                                @endforeach
+                                             <select class="form-select form-select-sm item-tipe-garansi" name="items[{{ $id_produk }}][tipe_garansi]" required>
+                                                <option value="NONE" selected>NONE</option><option value="RESMI">RESMI</option><option value="SELF_SERVICE">SELF SERVICE</option>
                                             </select>
                                         </td>
                                         <td>
@@ -181,14 +199,13 @@
                                                 <small class="text-muted serial-count-feedback">Jumlah No. Seri: 0</small>
                                                 <div class="invalid-feedback d-block serial-error-feedback"></div>
                                             </div>
-                                            @if(!$item['memiliki_serial']) <span class="text-muted">-</span> @endif
+                                            @if(!$memiliki_serial) <span class="text-muted">-</span> @endif
                                         </td>
                                     </tr>
                                 @endforeach
-                            @elseif($tipe_penerimaan === 'MANUAL' && empty(old('items')))
-                                <tr id="manual-item-placeholder"> 
-                                    <td colspan="9" class="text-center text-muted py-4">Klik tombol "Tambah Item" untuk memulai.</td>
-                                </tr>
+                            @elseif($isManual)
+                                {{-- Kolom colspan disesuaikan berdasarkan peran --}}
+                                <tr id="manual-item-placeholder"><td colspan="{{ $isAdmin ? 10 : 9 }}" class="text-center text-muted py-4">Klik "Tambah Item" untuk memulai.</td></tr>
                             @endif
                         </tbody>
                     </table>
@@ -221,6 +238,18 @@
         <td>
             <input type="number" class="form-control item-jumlah-diterima text-end" name="items[__INDEX__][jumlah_diterima_sekarang]" value="1" required min="1" step="1" data-item-index="__INDEX__" data-has-serial="false">
         </td>
+
+        @if($isAdmin)
+            <td>
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text">Rp</span>
+                    <input type="number" class="form-control text-end" name="items[__INDEX__][harga_beli]" value="0" min="0" required>
+                </div>
+            </td>
+        @else
+            {{-- Untuk GUDANG, kirim harga default 0 --}}
+            <input type="hidden" name="items[__INDEX__][harga_beli]" value="0">
+        @endif
 
          <td>
             <select class="form-select item-tipe-stok" name="items[__INDEX__][tipe_stok]" required>
@@ -276,7 +305,7 @@
             });
         }
 
-        let manualItemNextIndex = {{ old('items') ? count(old('items')) : ($detailItems ? count($detailItems) : 0) }};
+        let manualItemNextIndex = {{ old('items') ? count(old('items')) : ($sumberData ? count($sumberData->items) : 0) }};
 
         function initializeManualProductSelect(element) {
             $(element).select2({

@@ -1,19 +1,23 @@
-{{-- resources/views/admin/laporan/stok/detail_batch_produk.blade.php --}}
 @extends('layouts.app')
 
-@section('title', 'Detail Stok Batch untuk Produk: ' . $produk->nama)
+@section('title', 'Detail Stok Batch untuk: ' . $produk->nama)
 
 @push('styles')
     <style>
         #detail-batch-table th,
         #detail-batch-table td {
             vertical-align: middle;
-            font-size: 0.85rem; /* Ukuran font lebih kecil untuk tabel detail */
+            font-size: 0.85rem;
         }
         .serial-list-cell {
-            max-width: 250px; /* Batasi lebar kolom serial */
-            white-space: normal; /* Izinkan word wrap */
+            max-width: 300px; /* Lebarkan sedikit untuk serial */
+            white-space: normal;
             word-break: break-all;
+        }
+        .footer-total-stok {
+            background-color: #f8f9fa; /* Warna latar footer */
+            font-size: 1.1rem;
+            font-weight: bold;
         }
     </style>
 @endpush
@@ -39,21 +43,30 @@
                 <table id="detail-batch-table" class="table table-striped table-bordered dt-responsive nowrap" style="width:100%">
                     <thead class="table-light">
                         <tr>
-                            <th>No</th>
-                            <th>ID Batch</th>
-                            <th>Tgl Masuk</th>
-                            <th>Sumber</th>
-                            <th>Kondisi</th>
-                            <th>Lokasi</th>
-                            <th class="text-end">Total Jumlah</th>
-                            <th class="text-end">Sudah Dipesan</th>
-                            <th class="text-end">Stok Siap Jual</th>
-                            <th>Nomor Seri (jika ada)</th>
+                            <th style="width: 5%;">ID</th>
+                            <th style="width: 15%;">Tgl Masuk</th>
+                            {{-- KOLOM BARU: Sumber & Harga Beli --}}
+                            <th style="width: 20%;">Sumber & Harga Beli</th>
+                            <th style="width: 10%;">Kondisi</th>
+                            <th style="width: 10%;">Lokasi</th>
+                            <th class="text-end" style="width: 10%;">Total Qty</th>
+                            <th class="text-end" style="width: 10%;">Qty Siap Jual</th>
+                            <th style="width: 20%;">Nomor Seri Tersedia</th>
                         </tr>
                     </thead>
                     <tbody>
                         {{-- Data akan diisi oleh DataTables --}}
                     </tbody>
+                    {{-- FOOTER BARU UNTUK TOTAL STOK --}}
+                    <tfoot class="footer-total-stok">
+                        <tr>
+                            <th colspan="6" class="text-end">Total Stok Siap Jual (Kondisi BAIK):</th>
+                            <th class="text-end text-success">
+                                {{ $totalStokSiapJual ?: 0 }} {{ $produk->satuan }}
+                            </th>
+                            <th></th>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </div>
@@ -70,21 +83,23 @@
                 responsive: true,
                 ajax: "{{ route('admin.laporan.stok.detail_batch_produk', $produk->id) }}",
                 columns: [
-                    { data: 'DT_RowIndex', name: 'DT_RowIndex', orderable: false, searchable: false, className: 'text-center' },
-                    { data: 'id_batch', name: 'stok_barang.id' },
-                    { data: 'diterima_at_formatted', name: 'stok_barang.diterima_at' },
-                    { data: 'supplier_nama', name: 'supplier.nama' },
-                    { data: 'kondisi', name: 'stok_barang.kondisi' },
-                    { data: 'lokasi', name: 'stok_barang.lokasi' },
-                    { data: 'total_jumlah_batch', name: 'stok_barang.jumlah', className: 'text-end' },
-                    { data: 'sudah_dipesan', name: 'sudah_dipesan', orderable: false, searchable: false, className: 'text-end text-warning' },
+                    { data: 'id_batch', name: 'id' },
+                    { data: 'diterima_at_formatted', name: 'diterima_at' },
+                    // KOLOM BARU KITA
+                    { data: 'sumber_dan_harga_display', name: 'sumber_dan_harga_display', orderable: false, searchable: false },
+                    { data: 'kondisi', name: 'kondisi' },
+                    { data: 'lokasi', name: 'lokasi' },
+                    { data: 'total_jumlah_batch', name: 'jumlah', className: 'text-end' },
                     { data: 'stok_siap_jual', name: 'stok_siap_jual', orderable: false, searchable: false, className: 'text-end' },
                     { data: 'nomor_seri_tersedia', name: 'nomor_seri_tersedia', orderable: false, searchable: false, className: 'serial-list-cell' }
                 ],
-                language: {  
-                    processing: '<i class="bi bi-hourglass-split"></i> Memuat data...'
+                // Kita hilangkan footer bawaan DataTables agar tidak tumpang tindih
+                // dengan <tfoot> HTML kita
+                dom: 'lrtip', // l-length, r-processing, t-table, i-info, p-paginate
+                language: {
+                    url: '{{ asset('js/i18n/id.json') }}',
                 },
-                order: [[2, 'asc']] 
+                order: [[1, 'asc']] // Order by Tgl Masuk
             });
         });
     </script>

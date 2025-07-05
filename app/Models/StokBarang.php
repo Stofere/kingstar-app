@@ -77,6 +77,12 @@ class StokBarang extends Model
          return $this->hasMany(RiwayatPerpindahanStok::class, 'id_stok_barang');
      }
 
+     public function riwayatPergerakanMasuk()
+    {
+        // Sebuah batch stok hanya memiliki SATU riwayat pergerakan masuk yang original.
+        return $this->hasOne(RiwayatPergerakanStok::class, 'id_stok_barang_terkait')->where('jumlah_masuk', '>', 0);
+    }
+
      // Relasi: Satu batch StokBarang bisa dihitung dalam banyak detail opname
      public function detailStokOpname()
      {

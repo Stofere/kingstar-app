@@ -12,16 +12,12 @@ class ReturPenjualan extends Model
     protected $table = 'retur_penjualan';
 
     protected $fillable = [
-        'id_detail_penjualan',
-        'id_pengguna',
         'nomor_retur',
-        'jumlah_retur',
-        'nomor_seri_diretur',
-        'alasan_retur',
-        'catatan_pelanggan',
-        'tindakan_lanjut',
-        'catatan_internal_retur',
+        'id_penjualan_asal',
+        'id_pengguna',
         'tanggal_retur',
+        'status_retur',
+        'catatan_internal_retur',
     ];
 
     protected $casts = [
@@ -70,5 +66,20 @@ class ReturPenjualan extends Model
             'id_detail_penjualan', // Local key on ReturPenjualan table...
             'id_produk' // Local key on DetailPenjualan table...
         );
+    }
+    
+    /**
+     * Mendefinisikan relasi "hasMany" ke DetailReturPenjualan.
+     * Setiap nota retur dapat memiliki BANYAK rincian item retur.
+     */
+    public function detailReturPenjualan()
+    {
+        return $this->hasMany(DetailReturPenjualan::class, 'id_retur_penjualan');
+    }
+
+    // Relasi ke nota penjualan asal
+    public function penjualanAsal()
+    {
+        return $this->belongsTo(Penjualan::class, 'id_penjualan_asal');
     }
 }

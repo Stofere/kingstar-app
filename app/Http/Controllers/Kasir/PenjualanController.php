@@ -123,7 +123,7 @@ class PenjualanController extends Controller
         $produk = Produk::find($idProduk);
 
         if (!$produk) {
-            return response()->json(['success' => false, 'message' => 'Produk tidak ditemukan.'], 404);
+            return response()->json(['success' => false, 'message' => 'No results found'], 404);
         }
 
         $query = StokBarang::where('id_produk', $idProduk)
@@ -177,63 +177,63 @@ class PenjualanController extends Controller
     }
 
     public function getAvailableSerialsAjax(Request $request)
-{
-    $request->validate([
-        'id_stok_barang' => 'required|integer|exists:stok_barang,id',
-    ]);
+    {
+        $request->validate([
+            'id_stok_barang' => 'required|integer|exists:stok_barang,id',
+        ]);
 
-    $idStokBarang = $request->input('id_stok_barang');
-    $batch = StokBarang::with('produk')->find($idStokBarang);
+        $idStokBarang = $request->input('id_stok_barang');
+        $batch = StokBarang::with('produk')->find($idStokBarang);
 
-    if (!$batch || !$batch->produk->memiliki_serial) {
-        return response()->json(['success' => false, 'message' => 'Batch tidak ditemukan atau produk tidak berserial.', 'serials' => []]);
-    }
-    
-    // =========================================================================
-    // ## LOGIKA BARU MENGGUNAKAN 'riwayat_pergerakan_stok' (LEBIH BAIK) ##
-    // =========================================================================
-    
-    // Langkah 1: Dapatkan semua nomor seri yang PERNAH tercatat masuk ke batch ini sebagai kandidat.
-    $candidateSerials = RiwayatPergerakanStok::where('id_stok_barang_terkait', $idStokBarang)
-        ->where('jumlah_masuk', '>', 0)
-        ->whereNotNull('nomor_seri')
-        ->distinct()
-        ->pluck('nomor_seri');
+        if (!$batch || !$batch->produk->memiliki_serial) {
+            return response()->json(['success' => false, 'message' => 'Batch tidak ditemukan atau produk tidak berserial.', 'serials' => []]);
+        }
+        
+        // =========================================================================
+        // ## LOGIKA BARU MENGGUNAKAN 'riwayat_pergerakan_stok' (LEBIH BAIK) ##
+        // =========================================================================
+        
+        // Langkah 1: Dapatkan semua nomor seri yang PERNAH tercatat masuk ke batch ini sebagai kandidat.
+        $candidateSerials = RiwayatPergerakanStok::where('id_stok_barang_terkait', $idStokBarang)
+            ->where('jumlah_masuk', '>', 0)
+            ->whereNotNull('nomor_seri')
+            ->distinct()
+            ->pluck('nomor_seri');
 
-    if ($candidateSerials->isEmpty()) {
-        return response()->json(['success' => false, 'message' => 'Tidak ada catatan nomor seri masuk untuk batch ini.', 'serials' => []]);
-    }
+        if ($candidateSerials->isEmpty()) {
+            return response()->json(['success' => false, 'message' => 'Tidak ada catatan nomor seri masuk untuk batch ini.', 'serials' => []]);
+        }
 
-    // Langkah 2: Dari semua kandidat, cari tahu ID record pergerakan TERAKHIR untuk setiap serial.
-    // Ini adalah cara paling efisien untuk menentukan status terkini.
-    $latestMovementIds = RiwayatPergerakanStok::select(DB::raw('MAX(id) as id'))
-        ->whereIn('nomor_seri', $candidateSerials)
-        ->groupBy('nomor_seri')
-        ->pluck('id');
+        // Langkah 2: Dari semua kandidat, cari tahu ID record pergerakan TERAKHIR untuk setiap serial.
+        // Ini adalah cara paling efisien untuk menentukan status terkini.
+        $latestMovementIds = RiwayatPergerakanStok::select(DB::raw('MAX(id) as id'))
+            ->whereIn('nomor_seri', $candidateSerials)
+            ->groupBy('nomor_seri')
+            ->pluck('id');
 
-    // Langkah 3: Ambil semua serial dari pergerakan terakhir yang:
-    // a. Merupakan transaksi MASUK (bukan keluar).
-    // b. Benar-benar milik batch yang sedang kita cek.
-    $availableSerials = RiwayatPergerakanStok::whereIn('id', $latestMovementIds)
-        ->where('jumlah_masuk', '>', 0) 
-        ->where('id_stok_barang_terkait', $idStokBarang)
-        ->pluck('nomor_seri')
-        ->values()
-        ->all();
+        // Langkah 3: Ambil semua serial dari pergerakan terakhir yang:
+        // a. Merupakan transaksi MASUK (bukan keluar).
+        // b. Benar-benar milik batch yang sedang kita cek.
+        $availableSerials = RiwayatPergerakanStok::whereIn('id', $latestMovementIds)
+            ->where('jumlah_masuk', '>', 0) 
+            ->where('id_stok_barang_terkait', $idStokBarang)
+            ->pluck('nomor_seri')
+            ->values()
+            ->all();
 
-    if (empty($availableSerials)) {
+        if (empty($availableSerials)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Semua nomor seri untuk batch ini sudah teralokasi atau tidak tersedia.',
+                'serials' => []
+            ]);
+        }
+
         return response()->json([
-            'success' => false,
-            'message' => 'Semua nomor seri untuk batch ini sudah teralokasi atau tidak tersedia.',
-            'serials' => []
+            'success' => true,
+            'serials' => $availableSerials
         ]);
     }
-
-    return response()->json([
-        'success' => true,
-        'serials' => $availableSerials
-    ]);
-}
 
     public function store(StorePenjualanRequest $request)
     {
@@ -557,7 +557,11 @@ class PenjualanController extends Controller
                 // Eager load relasi turunan dari detailPenjualan
                 $query->with(['produk', 'stokAlokasi.stokBarang']); 
             },
-            'retur.detailPenjualan' // BARU: Memuat relasi retur dan detail penjualannya
+            // Muat relasi header retur, dan dari situ muat detail item retur,
+            // dan dari detail item retur, muat lagi detail penjualan asalnya untuk dapat nama produk.
+            'retur' => function ($query) {
+                $query->with(['detailReturPenjualan.detailPenjualanAsal.produk']);
+            }
         ])->findOrFail($id);
 
         // Variabel statis untuk informasi toko

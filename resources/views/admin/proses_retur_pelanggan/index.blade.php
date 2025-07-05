@@ -43,18 +43,15 @@
                             <th>No</th>
                             <th>No. Retur</th>
                             <th>Tgl Retur</th>
-                            <th>No. Nota Asal</th>
-                            <th>Pelanggan</th>
-                            <th>Produk Diretur</th>
-                            <th>Jml</th>
+                            <th>Produk & SN</th>
+                            <th>Supplier Asal</th>
                             <th>Alasan Awal</th>
-                            <th>Tindakan Awal Kasir</th>
                             <th>Kasir Awal</th>
                             <th>Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {{-- Data akan diisi oleh DataTables dari ProsesReturPelangganController@index --}}
+                        {{-- Data diisi oleh DataTables --}}
                     </tbody>
                 </table>
             </div>
@@ -63,30 +60,29 @@
 </div>
 @endsection
 
-@push('scripts')
-    <script>
-        $(document).ready(function() {
-            $('#proses-retur-table').DataTable({
-                processing: true,
-                serverSide: true,
-                responsive: true,
-                ajax: "{{ route('admin.proses_retur_pelanggan.index') }}",
-                columns: [
-                    { data: 'DT_RowIndex', name: 'DT_RowIndex', orderable: false, searchable: false, className: 'text-center' },
-                    { data: 'nomor_retur', name: 'retur_penjualan.nomor_retur' }, // Sorting/searching by retur_penjualan.nomor_retur
-                    { data: 'tanggal_retur_formatted', name: 'retur_penjualan.tanggal_retur' },
-                    { data: 'nomor_penjualan_asal', name: 'detailPenjualan.penjualan.nomor_penjualan', orderable: false },
-                    { data: 'pelanggan', name: 'detailPenjualan.penjualan.pelanggan.nama', orderable: false },
-                    { data: 'nama_produk', name: 'detailPenjualan.produk.nama', orderable: false },
-                    { data: 'jumlah_retur_formatted', name: 'retur_penjualan.jumlah_retur', className: 'text-center' },
-                    { data: 'alasan_retur', name: 'retur_penjualan.alasan_retur', orderable: false, searchable: false },
-                    { data: 'tindakan_lanjut_awal', name: 'retur_penjualan.tindakan_lanjut', orderable: false},
-                    { data: 'kasir_proses_awal', name: 'pengguna.nama', orderable: false },
-                    { data: 'action', name: 'action', orderable: false, searchable: false, className: 'text-center' }
-                ],
-                language: { /* ... Opsi bahasa DataTables ... */ },
-                order: [[2, 'asc']] // Default order by Tanggal Retur ascending (yang paling lama belum diproses)
-            });
-        });
-    </script>
-@endpush
+            @push('scripts')
+                <script>
+                    $(document).ready(function() {
+                        $('#proses-retur-table').DataTable({
+                            processing: true,
+                            serverSide: true,
+                            responsive: true,
+                            ajax: "{{ route('admin.proses_retur_pelanggan.index') }}",
+                            columns: [
+                                { data: 'DT_RowIndex', name: 'DT_RowIndex', orderable: false, searchable: false },
+                                { data: 'no_retur', name: 'returPenjualan.nomor_retur' },
+                                { data: 'tgl_retur', name: 'returPenjualan.tanggal_retur' },
+                                { data: 'produk_info', name: 'detailPenjualanAsal.produk.nama' },
+                                { data: 'supplier_asal', name: 'alokasiAsal.stokBarang.supplier.nama', orderable: false },
+                                { data: 'alasan_awal', name: 'alasan_retur' },
+                                { data: 'kasir_awal', name: 'returPenjualan.pengguna.nama', orderable: false },
+                                { data: 'action', name: 'action', orderable: false, searchable: false, className: 'text-center' }
+                            ],
+                        language: {
+                            url: '{{ asset('js/i18n/id.json') }}',
+                        },
+                        order: [[2, 'asc']] // Default order by Tanggal Retur ascending (yang paling lama belum diproses)
+                        });
+                    });
+                </script>
+            @endpush

@@ -1,67 +1,64 @@
 @extends('layouts.app')
 
-@section('title', 'Proses Tindakan Retur Pelanggan: ' . $returPenjualan->nomor_retur)
+@php
+    // Siapkan variabel untuk kemudahan akses
+    $produk = $detailReturPenjualan->detailPenjualanAsal->produk;
+    $returHeader = $detailReturPenjualan->returPenjualan;
+    $penjualanAsal = $returHeader->penjualanAsal;
+    $stokBarangAsal = $detailReturPenjualan->alokasiAsal->stokBarang ?? null;
+@endphp
+
+@section('title', 'Proses Item Retur: ' . $produk->nama)
 
 @push('styles')
-    {{-- Tambahkan style jika perlu --}}
     <style>
-        .detail-retur-info { background-color: #f8f9fa; padding: 1rem; border-radius: .25rem; margin-bottom: 1.5rem; }
+        .info-box { background-color: #f8f9fa; border: 1px solid #dee2e6; border-left: 5px solid #0dcaf0; }
+        .info-label { font-weight: 600; color: #495057; }
         .required-label::after { content: " *"; color: red; }
-        .form-section-retur-admin { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #dee2e6;}
     </style>
 @endpush
 
 @section('content')
 <div class="container-fluid">
-    <h1 class="mb-4">Proses Tindakan untuk Retur Pelanggan <span class="text-primary">#{{ $returPenjualan->nomor_retur }}</span></h1>
+    <h1 class="mb-4">Proses Tindakan untuk Item Retur</h1>
 
-    <form action="{{ route('admin.proses_retur_pelanggan.store.tindakan', $returPenjualan->id) }}" method="POST" id="form-tindakan-admin-retur">
+    {{-- Form sekarang menunjuk ke ID detail yang benar --}}
+    <form action="{{ route('admin.proses_retur_pelanggan.store.tindakan', $detailReturPenjualan->id) }}" method="POST" id="form-tindakan-admin">
         @csrf
+
         <div class="card shadow-sm">
-            <div class="card-header bg-info text-white">
-                <h5 class="mb-0">Detail Item Retur</h5>
+            <div class="card-header bg-warning text-dark">
+                {{-- Judul spesifik untuk satu item --}}
+                <h5 class="mb-0">Item: {{ $produk->nama }} @if($detailReturPenjualan->nomor_seri_diretur) (SN: {{ $detailReturPenjualan->nomor_seri_diretur }}) @endif</h5>
             </div>
             <div class="card-body">
-                @if(session('error'))
-                    <div class="alert alert-danger">{{ session('error') }}</div>
-                @endif
                 @if ($errors->any())
-                    <div class="alert alert-danger pb-0">
-                        <p class="fw-bold">Terdapat kesalahan pada input Anda:</p>
-                        <ul>
-                            @foreach ($errors->all() as $error)
-                                <li>{{ $error }}</li>
-                            @endforeach
-                        </ul>
-                    </div>
+                    <div class="alert alert-danger"><ul>@foreach ($errors->all() as $error) <li>{{ $error }}</li> @endforeach</ul></div>
                 @endif
-
-                <div class="detail-retur-info">
+                
+                {{-- Bagian Info Detail --}}
+                <div class="info-box p-3 mb-4 rounded">
                     <div class="row">
                         <div class="col-md-6">
-                            <p><strong>No. Nota Asal:</strong> {{ $returPenjualan->detailPenjualan->penjualan->nomor_penjualan ?? '-' }}</p>
-                            <p><strong>Pelanggan:</strong> {{ $returPenjualan->detailPenjualan->penjualan->pelanggan->nama ?? 'Umum' }}</p>
-                            <p><strong>Produk:</strong> {{ $returPenjualan->detailPenjualan->produk->nama ?? '-' }} ({{ $returPenjualan->detailPenjualan->produk->kode_produk ?? '-' }})</p>
-                            <p><strong>Jumlah Diretur:</strong> {{ $returPenjualan->jumlah_retur }} unit</p>
+                            <p class="mb-2"><span class="info-label d-block">No. Nota Retur:</span> {{ $returHeader->nomor_retur }}</p>
+                            <p class="mb-2"><span class="info-label d-block">No. Nota Asal:</span> <a href="{{ route('kasir.penjualan.nota', $penjualanAsal->id) }}" target="_blank">{{ $penjualanAsal->nomor_penjualan }}</a></p>
+                            <p class="mb-0"><span class="info-label d-block">Pelanggan:</span> {{ $penjualanAsal->pelanggan->nama ?? 'Umum' }}</p>
                         </div>
                         <div class="col-md-6">
-                            <p><strong>Tanggal Retur oleh Kasir:</strong> {{ Carbon\Carbon::parse($returPenjualan->tanggal_retur)->isoFormat('D MMM YYYY, HH:mm') }}</p>
-                            <p><strong>Kasir Proses Awal:</strong> {{ $returPenjualan->pengguna->nama ?? '-' }}</p>
-                            <p><strong>Alasan Retur Awal:</strong> {{ $returPenjualan->alasan_retur ? \App\Helpers\ReturHelper::formatAlasanRetur($returPenjualan->alasan_retur) : '-' }}</p>
-                            <p><strong>Tindakan Awal Kasir:</strong> {{ $returPenjualan->tindakan_lanjut ? \App\Helpers\ReturHelper::formatTindakanLanjut($returPenjualan->tindakan_lanjut) : '-' }}</p>
+                            <p class="mb-2"><span class="info-label d-block">Supplier Asal:</span> <strong>{{ $stokBarangAsal->supplier->nama ?? 'N/A' }}</strong></p>
+                            <p class="mb-2"><span class="info-label d-block">Alasan Awal (dari Kasir):</span> {{ ucwords(strtolower(str_replace('_', ' ', $detailReturPenjualan->alasan_retur))) }}</p>
+                            <p class="mb-0"><span class="info-label d-block">Jumlah Diretur:</span> {{ $detailReturPenjualan->jumlah_retur }} unit</p>
                         </div>
                     </div>
-                    @if($returPenjualan->nomor_seri_diretur)
-                    <p><strong>Nomor Seri Diretur:</strong> <span class="fw-bold">{{ str_replace(',', ', ', $returPenjualan->nomor_seri_diretur) }}</span></p>
-                    @endif
-                    @if($returPenjualan->catatan_pelanggan)
-                    <p><strong>Catatan dari Pelanggan:</strong> {{ $returPenjualan->catatan_pelanggan }}</p>
-                    @endif
                 </div>
+                
+                <h5 class="mt-4">Keputusan Admin</h5>
+                <hr>
 
-                <div class="form-section-retur-admin">
-                   <div class="mb-3">
-                        <label for="tindakan_admin" class="form-label required-label">Keputusan Tindak Lanjut oleh Admin</label>
+                {{-- Input untuk satu item, tidak lagi di dalam loop --}}
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label for="tindakan_admin" class="form-label required-label">Keputusan Tindak Lanjut:</label>
                         <select class="form-select" id="tindakan_admin" name="tindakan_admin" required>
                             <option value="">Pilih Tindakan...</option>
                             @foreach($tindakanAdminOptions as $key => $value)
@@ -69,27 +66,28 @@
                             @endforeach
                         </select>
                     </div>
-
-                    {{-- AREA BARU: Pilihan Lokasi (disembunyikan secara default) --}}
-                    <div class="mb-3" id="area-pilihan-lokasi" style="display: none;">
-                        <label for="lokasi_tujuan_retur" class="form-label required-label">Pilih Lokasi Penyimpanan Barang</label>
+                    <div class="col-md-4 area-dinamis" id="area-lokasi" style="display: none;">
+                        <label for="lokasi_tujuan_retur" class="form-label required-label">Lokasi Penyimpanan:</label>
                         <select class="form-select" id="lokasi_tujuan_retur" name="lokasi_tujuan_retur">
-                            {{-- Opsi akan diisi oleh JS --}}
+                            <option value="GUDANG">Gudang</option><option value="TOKO">Toko</option>
                         </select>
                     </div>
-
-                    <div class="mt-3">
-                        <label for="catatan_admin_proses" class="form-label">Catatan Proses Admin (Opsional):</label>
-                        <textarea class="form-control @error('catatan_admin_proses') is-invalid @enderror" id="catatan_admin_proses" name="catatan_admin_proses" rows="2">{{ old('catatan_admin_proses') }}</textarea>
-                        @error('catatan_admin_proses') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                    <div class="col-md-4 area-dinamis" id="area-harga" style="display: none;">
+                        <label for="harga_beli_baru" class="form-label required-label">Harga Beli Baru:</label>
+                        <div class="input-group">
+                            <span class="input-group-text">Rp</span>
+                            <input type="number" class="form-control" id="harga_beli_baru" name="harga_beli_baru" placeholder="Harga Pokok" min="0" value="{{ $stokBarangAsal->harga_beli ?? 0 }}">
+                        </div>
                     </div>
+                </div>
+                <div class="mt-3">
+                    <label for="catatan_admin_proses" class="form-label">Catatan Proses (Opsional):</label>
+                    <textarea class="form-control" id="catatan_admin_proses" name="catatan_admin_proses" rows="2"></textarea>
                 </div>
             </div>
             <div class="card-footer text-end">
                 <a href="{{ route('admin.proses_retur_pelanggan.index') }}" class="btn btn-secondary">Batal</a>
-                <button type="submit" class="btn btn-success" id="btn-simpan-tindakan-admin">
-                    <i class="bi bi-check2-circle me-1"></i> Simpan Tindakan
-                </button>
+                <button type="submit" class="btn btn-success"><i class="bi bi-check2-circle me-1"></i> Simpan Tindakan</button>
             </div>
         </div>
     </form>
@@ -97,53 +95,35 @@
 @endsection
 
 @push('scripts')
-<script src="//cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
 $(document).ready(function() {
     $('#tindakan_admin').on('change', function() {
         const tindakan = $(this).val();
-        const areaLokasi = $('#area-pilihan-lokasi');
-        const selectLokasi = $('#lokasi_tujuan_retur');
         
-        // Opsi lokasi yang akan digunakan
-        const lokasiRusak = [
-            { value: 'GUDANG', text: 'Gudang (Area Retur/Rusak)' },
-            { value: 'TOKO', text: 'Toko (Area Retur/Rusak)' }
-        ];
-        const lokasiBaik = [
-            { value: 'GUDANG', text: 'Gudang' },
-            { value: 'TOKO', text: 'Toko' }
-        ];
+        const areaLokasi = $('#area-lokasi');
+        const inputLokasi = $('#lokasi_tujuan_retur');
+        
+        const areaHarga = $('#area-harga');
+        const inputHarga = $('#harga_beli_baru');
 
-        selectLokasi.empty().prop('required', false); // Selalu reset saat berubah
-
+        // Sembunyikan semua dan reset 'required'
+        $('.area-dinamis').hide();
+        inputLokasi.prop('required', false);
+        inputHarga.prop('required', false);
+        
         if (tindakan === 'KEMBALI_KE_STOK_BAIK_ADMIN') {
-            $.each(lokasiBaik, function(i, loc) {
-                selectLokasi.append($('<option>', { value: loc.value, text: loc.text }));
-            });
             areaLokasi.slideDown();
-            selectLokasi.prop('required', true);
-        } else if (tindakan === 'CATAT_SEBAGAI_STOK_RUSAK_FINAL') {
-            $.each(lokasiRusak, function(i, loc) {
-                selectLokasi.append($('<option>', { value: loc.value, text: loc.text }));
-            });
+            inputLokasi.prop('required', true);
+            areaHarga.slideDown();
+            inputHarga.prop('required', true);
+        } else if (tindakan === 'AKAN_DIRETUR_KE_SUPPLIER') {
             areaLokasi.slideDown();
-            selectLokasi.prop('required', true);
-        } 
-        // --- INI PERBAIKANNYA: TAMBAHKAN KONDISI UNTUK RETUR SUPPLIER ---
-        else if (tindakan === 'AKAN_DIRETUR_KE_SUPPLIER') {
-            // Untuk retur ke supplier, kita juga menggunakan lokasi "Area Retur/Rusak"
-            $.each(lokasiRusak, function(i, loc) {
-                selectLokasi.append($('<option>', { value: loc.value, text: loc.text }));
-            });
+            inputLokasi.prop('required', true);
+        } else if (tindakan === 'BARANG_SELESAI_SERVIS') {
             areaLokasi.slideDown();
-            selectLokasi.prop('required', true);
+            inputLokasi.prop('required', true);
         }
-        // --- AKHIR PERBAIKAN ---
-        else {
-            areaLokasi.slideUp();
-        }
-    }).trigger('change'); // Trigger saat halaman dimuat untuk menangani old input
+    }).trigger('change'); // Trigger saat halaman dimuat untuk set kondisi awal
 });
 </script>
 @endpush

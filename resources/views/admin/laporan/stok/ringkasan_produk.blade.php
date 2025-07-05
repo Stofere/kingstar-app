@@ -1,4 +1,3 @@
-{{-- admin/laporan/stok/ringkasan_produk.blade.php --}}
 @extends('layouts.app')
 
 @section('title', 'Laporan Status Stok Produk')

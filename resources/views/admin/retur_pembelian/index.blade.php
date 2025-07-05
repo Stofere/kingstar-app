@@ -46,11 +46,9 @@
                             <th>No</th>
                             <th>No. Retur</th>
                             <th>Tgl Retur</th>
-                            <th>Supplier Asal Batch</th>
-                            <th>Produk Diretur</th>
-                            <th>Jml Diretur</th>
-                            <th>Alasan</th>
-                            <th>Tindak Lanjut dari Supplier</th>
+                            <th>Supplier Tujuan</th>
+                            <th>Total Jml</th>
+                            <th>Status</th>
                             <th>Admin Proses</th>
                             <th>Aksi</th>
                         </tr>
@@ -74,38 +72,14 @@
                 responsive: true,
                 ajax: "{{ route('admin.retur_pembelian.index') }}",
                 columns: [
-                    { data: 'DT_RowIndex', name: 'DT_RowIndex', orderable: false, searchable: false, className: 'text-center' },
+                    { data: 'DT_RowIndex', name: 'DT_RowIndex', orderable: false, searchable: false },
                     { data: 'nomor_retur', name: 'nomor_retur' },
                     { data: 'tanggal_retur_formatted', name: 'tanggal_retur' },
-                    { data: 'supplier_asal_batch', name: 'stokBarang.supplier.nama', orderable: false, searchable: false },
-                    { data: 'nama_produk', name: 'stokBarang.produk.nama', orderable: false, searchable: false },
-                    { data: 'jumlah_retur_formatted', name: 'jumlah_retur', className: 'text-center', searchable: false },
-                    { data: 'alasan_retur', name: 'alasan_retur', orderable: false, searchable: false },
-                    { data: 'tindakan_lanjut_supplier_display', name: 'tindakan_lanjut_supplier' },
-                    { data: 'admin_proses', name: 'pengguna.nama', orderable: false, searchable: false },
-                    {
-                        data: 'action',
-                        name: 'action',
-                        orderable: false,
-                        searchable: false,
-                        className: 'text-center',
-                        render: function(data, type, row) {
-                            // Tombol untuk melihat detail retur
-                            let btnShow = '<a href="' + "{{ route('admin.retur_pembelian.show', ':id') }}".replace(':id', row.id) + '" class="btn btn-info btn-sm me-1" title="Lihat Detail Retur"><i class="bi bi-eye"></i></a>';
-
-                            let btnEdit = '';
-                            // Daftar status yang dianggap final, di mana tombol edit tidak akan ditampilkan lagi
-                            const statusFinal = ['SELESAI_DIGANTI', 'SELESAI_DIREFUND', 'DITOLAK_SUPPLIER'];
-
-                            // Cek jika status retur dari supplier belum termasuk status final
-                            if (!statusFinal.includes(row.tindakan_lanjut_supplier)) {
-                                btnEdit = '<a href="' + "{{ route('admin.retur_pembelian.edit', ':id') }}".replace(':id', row.id) + '" class="btn btn-warning btn-sm" title="Update Tindak Lanjut"><i class="bi bi-pencil-square"></i></a>';
-                            }
-
-                            // Gabungkan tombol-tombol yang akan ditampilkan
-                            return btnShow + btnEdit;
-                        }
-                    }
+                    { data: 'supplier_tujuan', name: 'supplier.nama' },
+                    { data: 'total_jumlah_retur', name: 'total_jumlah_retur', orderable: false, searchable: false },
+                    { data: 'status_display', name: 'status' },
+                    { data: 'admin_proses', name: 'pengguna.nama' },
+                    { data: 'action', name: 'action', orderable: false, searchable: false, className: 'text-center' }
                 ],
                 language: {
                     processing: '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Memuat...</span></div>',

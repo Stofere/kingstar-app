@@ -242,54 +242,39 @@
         </div>
 
         
-        @if($penjualan->retur && $penjualan->retur->isNotEmpty())
+        @if($penjualan->retur->isNotEmpty())
             @php
-                // Menghitung total kuantitas yang dijual dan yang diretur untuk seluruh nota
                 $totalQtyTerjual = $penjualan->detailPenjualan->sum('jumlah');
-                $totalQtyDiretur = $penjualan->retur->sum('jumlah_retur');
                 
-                // Menentukan status retur berdasarkan perbandingan kuantitas
-                if ($totalQtyDiretur >= $totalQtyTerjual) {
-                    $statusReturTeks = 'DIRETUR PENUH';
-                    $statusReturDeskripsi = 'Seluruh barang pada nota ini telah dikembalikan.';
-                } else {
-                    $statusReturTeks = 'DIRETUR SEBAGIAN';
-                    $statusReturDeskripsi = 'Sebagian barang pada nota ini telah dikembalikan.';
+                // Hitung total qty diretur dengan cara yang baru
+                $totalQtyDiretur = 0;
+                foreach($penjualan->retur as $returHeader) {
+                    $totalQtyDiretur += $returHeader->detailReturPenjualan->sum('jumlah_retur');
                 }
+
+                $statusReturTeks = ($totalQtyDiretur >= $totalQtyTerjual) ? 'DIRETUR PENUH' : 'DIRETUR SEBAGIAN';
             @endphp
 
             <div class="info-retur-container">
-                {{-- Menampilkan status retur yang sudah dihitung (SEBAGIAN/PENUH) --}}
-                <h5>PEMBERITAHUAN - NOTA {{ $statusReturTeks }}</h5>
+                {{-- Judul yang lebih jelas --}}
+                <h5><i class="bi bi-info-circle-fill"></i> PEMBERITAHUAN: NOTA INI {{ $statusReturTeks }}</h5>
                 
-                <p><strong>Peringatan:</strong> {{ $statusReturDeskripsi }}</p>
+                {{-- Ringkasan yang lebih bersih --}}
+                <p class="mb-1">Terdapat <strong>{{ $penjualan->retur->count() }} transaksi retur</strong> yang terkait dengan nota penjualan ini.</p>
                 
-                <strong>Detail Retur:</strong>
+                {{-- Loop hanya untuk menampilkan link ke nota retur --}}
+                <strong>Referensi Nota Retur:</strong>
                 <ul>
-                    @foreach($penjualan->retur as $retur)
+                    @foreach($penjualan->retur as $returHeader) 
                         <li>
-                            {{-- Informasi dasar barang yang diretur --}}
-                            <strong>{{ $retur->detailPenjualan->nama_produk_snapshot }}</strong>
-                            (Qty: {{ $retur->jumlah_retur }})
-                            
-                            {{-- BARU: Cek dan tampilkan nomor seri yang diretur jika ada --}}
-                            @if(!empty($retur->nomor_seri_diretur))
-                                <br>
-                                <small style="font-weight: 500;">
-                                    SN Diretur: <strong>{{ str_replace(',', ', ', $retur->nomor_seri_diretur) }}</strong>
-                                </small>
-                            @endif
-                            
-                            {{-- Informasi tambahan terkait retur --}}
-                            <br>
-                            <small>
-                                No. Retur: <strong>{{ $retur->nomor_retur }}</strong> |
-                                Tgl: {{ \Carbon\Carbon::parse($retur->tanggal_retur)->isoFormat('D MMM YY') }} |
-                                Alasan: {{ $retur->alasan_retur ?: 'Tidak ada catatan' }}
-                            </small>
+                            <a href="{{ route('admin.proses_retur_pelanggan.show', $returHeader->id) }}" target="_blank">
+                                {{ $returHeader->nomor_retur }}
+                            </a> 
+                            <small class="text-muted">(Tanggal: {{ \Carbon\Carbon::parse($returHeader->tanggal_retur)->isoFormat('D MMM YYYY') }})</small>
                         </li>
                     @endforeach
                 </ul>
+                <small class="d-block mt-2">Untuk melihat detail item yang diretur, silakan klik nomor referensi di atas.</small>
             </div>
         @endif
         

@@ -68,16 +68,14 @@ class Penjualan extends Model
         return $this->hasMany(StokBarang::class, 'id_penjualan_alokasi');
     }
 
+    /**
+     * Mendefinisikan relasi langsung ke Nota Retur (Header).
+     * Sebuah Penjualan bisa memiliki BANYAK nota retur.
+     */
     public function retur()
-{
-    // Mengambil semua ReturPenjualan melalui tabel DetailPenjualan
-    return $this->hasManyThrough(
-        ReturPenjualan::class,
-        DetailPenjualan::class,
-        'id_penjualan', // Foreign key di tabel DetailPenjualan
-        'id_detail_penjualan', // Foreign key di tabel ReturPenjualan
-        'id', // Local key di tabel Penjualan
-        'id'  // Local key di tabel DetailPenjualan
-    );
-}
+    {
+        // Menggunakan hasMany karena tabel `retur_penjualan` punya foreign key `id_penjualan_asal`
+        // yang merujuk langsung ke `id` di tabel `penjualan` ini.
+        return $this->hasMany(ReturPenjualan::class, 'id_penjualan_asal', 'id');
+    }
 }

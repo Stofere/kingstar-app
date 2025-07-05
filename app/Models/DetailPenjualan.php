@@ -43,13 +43,9 @@ class DetailPenjualan extends Model
     }
 
 
-    /**
-     * Mendapatkan semua record retur penjualan yang terkait dengan item detail penjualan ini.
-     * Satu item detail penjualan bisa diretur beberapa kali (misal, retur parsial).
-     */
-    public function returPenjualan() // Nama method harus konsisten dengan yang Anda panggil
+    public function returPenjualan()
     {
-        return $this->hasMany(ReturPenjualan::class, 'id_detail_penjualan');
+        return $this->hasMany(DetailReturPenjualan::class, 'id_detail_penjualan_asal');
     }
 
 
