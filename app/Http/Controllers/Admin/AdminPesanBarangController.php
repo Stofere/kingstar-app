@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Penjualan;
 use App\Models\DetailPenjualan;
 use App\Models\StokBarang;
-use App\Models\LogNomorSeri;
+use App\Models\RiwayatPergerakanStok;
 use App\Models\Produk;
 use App\Models\DetailPenjualanStokAlokasi;
 use Illuminate\Http\Request;
@@ -134,51 +134,54 @@ class AdminPesanBarangController extends Controller
     {
         $request->validate([
             'id_stok_barang' => 'required|integer|exists:stok_barang,id',
-            'id_penjualan_current' => 'sometimes|nullable|integer|exists:penjualan,id', // Dibuat nullable
         ]);
         $idStokBarang = $request->input('id_stok_barang');
-        $idPenjualanCurrentlyAllocating = $request->input('id_penjualan_current', null);
+        
+        // 1. Ambil semua kandidat nomor seri yang PERNAH tercatat masuk ke batch ini.
+        $candidateSerials = RiwayatPergerakanStok::where('id_stok_barang_terkait', $idStokBarang)
+            ->where('jumlah_masuk', '>', 0)
+            ->whereNotNull('nomor_seri')
+            ->distinct()
+            ->pluck('nomor_seri');
 
-        // 1. Ambil semua nomor seri yang statusnya DITERIMA dari batch ini
-        $allSerialsInBatch = LogNomorSeri::where('id_stok_barang_asal', $idStokBarang)
-                            ->where('status_log', 'DITERIMA')
-                            ->pluck('nomor_seri')
-                            ->toArray();
-
-        if (empty($allSerialsInBatch)) {
+        if ($candidateSerials->isEmpty()) {
             return response()->json(['success' => true, 'serials' => []]);
         }
 
-        // 2. Ambil nomor seri dari batch ini yang sudah di-pra-alokasikan (DIALOKASIKAN_PESANAN)
-        //    ke pesanan LAIN yang masih aktif
-        $queryPraAlokasiKeLain = DetailPenjualanStokAlokasi::where('id_stok_barang', $idStokBarang)
+        // 2. Dari semua kandidat, cari ID record pergerakan TERAKHIR untuk setiap serial.
+        $latestMovementIds = RiwayatPergerakanStok::select(DB::raw('MAX(id) as id'))
+            ->whereIn('nomor_seri', $candidateSerials)
+            ->groupBy('nomor_seri')
+            ->pluck('id');
+
+        // 3. Ambil semua serial dari pergerakan terakhir yang:
+        //    a. Merupakan transaksi MASUK (artinya stok ada).
+        //    b. Benar-benar milik BATCH INI.
+        $availableSerials = RiwayatPergerakanStok::whereIn('id', $latestMovementIds)
+            ->where('jumlah_masuk', '>', 0) 
+            ->where('id_stok_barang_terkait', $idStokBarang)
+            ->pluck('nomor_seri')
+            ->values()
+            ->all();
+        
+        // 4. Ambil nomor seri dari batch ini yang sudah di-pra-alokasikan ke pesanan LAIN
+        $bookedSerials = DetailPenjualanStokAlokasi::where('id_stok_barang', $idStokBarang)
             ->where('tipe_alokasi', 'DIALOKASIKAN_PESANAN')
             ->whereNotNull('nomor_seri_terkait')
-            ->whereHas('detailPenjualan.penjualan', function ($queryPenjualan) use ($idPenjualanCurrentlyAllocating) {
+            ->whereHas('detailPenjualan.penjualan', function ($queryPenjualan) {
                 $queryPenjualan->whereIn('status_penjualan', ['MENUNGGU_BARANG', 'MENUNGGU_PELUNASAN', 'SIAP_DIAMBIL']);
-                if ($idPenjualanCurrentlyAllocating) {
-                    $queryPenjualan->where('id', '!=', $idPenjualanCurrentlyAllocating);
-                }
-            });
-
-        $bookedSerialsForOtherOrders = $queryPraAlokasiKeLain
+            })
             ->pluck('nomor_seri_terkait')
-            ->flatMap(function ($serialString) {
-                return explode(',', $serialString);
-            })
-            ->map(function ($serial) {
-                return trim($serial);
-            })
-            ->filter()
-            ->unique()
-            ->values()
-            ->toArray();
+            ->flatMap(fn($s) => explode(',', $s))
+            ->map(fn($s) => trim($s))
+            ->filter()->unique()->values();
 
-        $availableSerials = array_diff($allSerialsInBatch, $bookedSerialsForOtherOrders);
+        // 5. Kurangi serial yang tersedia dengan yang sudah di-booking
+        $finalAvailableSerials = array_values(array_diff($availableSerials, $bookedSerials->all()));
 
         return response()->json([
             'success' => true,
-            'serials' => array_values($availableSerials)
+            'serials' => $finalAvailableSerials
         ]);
     }
 
@@ -338,13 +341,16 @@ class AdminPesanBarangController extends Controller
                     // Validasi Ketersediaan Setiap Serial yang Dipilih (PENTING)
                     foreach($serialsTerpilihUntukBatchIni as $sn) {
                         $trimmedSn = trim($sn);
-                        $logSn = LogNomorSeri::where('id_stok_barang_asal', $stokBarang->id)
-                                            ->where('nomor_seri', $trimmedSn)
-                                            ->where('status_log', 'DITERIMA')
-                                            ->first();
-                        if (!$logSn) { // Jika tidak ditemukan atau statusnya bukan DITERIMA
-                            throw new \Exception("Nomor Seri '{$trimmedSn}' tidak valid/ditemukan sebagai 'DITERIMA' dari Batch ID {$stokBarang->id}.");
-                        }
+                        // Cek status terakhir serial ini
+                            $lastMovement = RiwayatPergerakanStok::where('nomor_seri', $trimmedSn)->latest('id')->first();
+
+                            // Serial tidak valid jika:
+                            // 1. Tidak pernah ada di riwayat
+                            // 2. Pergerakan terakhirnya adalah KELUAR
+                            // 3. Pergerakan terakhirnya adalah MASUK, tapi bukan di batch yang sedang dipilih
+                            if (!$lastMovement || $lastMovement->jumlah_masuk == 0 || $lastMovement->id_stok_barang_terkait != $stokBarang->id) {
+                                throw new \Exception("Nomor Seri '{$trimmedSn}' tidak tersedia atau bukan milik Batch ID {$stokBarang->id}.");
+                            }
 
                         // Cek apakah serial ini sudah di-pra-alokasikan ke pesanan LAIN
                         $isBookedByOtherOrder = DetailPenjualanStokAlokasi::where('id_stok_barang', $stokBarang->id)

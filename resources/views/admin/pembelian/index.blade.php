@@ -76,14 +76,20 @@
                             <strong id="info_total_harga" class="text-danger"></strong>
                         </li>
                     </ul>
+                    
                     <div class="mb-3">
                         <label for="metode_pembayaran_lunasi" class="form-label required-label">Metode Pembayaran</label>
                         <select class="form-select" id="metode_pembayaran_lunasi" required>
-                             <option value="TUNAI">Tunai</option>
-                             <option value="TRANSFER_BCA">Transfer BCA</option>
-                             <option value="TRANSFER_MANDIRI">Transfer Mandiri</option>
+                            <option value="TUNAI">Tunai</option>
+                            <option value="QRIS">QRIS</option>
+                            <option value="TRANSFER_BCA">Transfer BCA</option>
+                            <option value="TRANSFER_MANDIRI">Transfer Mandiri</option>
+                            <option value="DEBIT_BCA">Debit BCA</option>
+                            <option value="DEBIT_MANDIRI">Debit Mandiri</option>
+                            <option value="KARTU_KREDIT">Kartu Kredit</option>
                         </select>
                     </div>
+                    
                      <div class="mb-3">
                         <label for="tanggal_pelunasan" class="form-label required-label">Tanggal Pelunasan</label>
                         <input type="date" class="form-control" id="tanggal_pelunasan" required>

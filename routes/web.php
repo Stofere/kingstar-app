@@ -24,6 +24,8 @@ use App\Http\Controllers\Admin\ProsesReturPelangganController;
 use App\Http\Controllers\Admin\KonsinyasiController;
 use App\Http\Controllers\Admin\PenyesuaianStokController;
 use App\Http\Controllers\Admin\LaporanHargaBeliController;
+use App\Http\Controllers\Admin\PerpindahanStokController;
+use App\Http\Controllers\Admin\StokOpnameController;
 
 
 // Kasir Controllers
@@ -85,10 +87,10 @@ Route::middleware(['auth'])->group(function () {
             Route::get('/pembelian', [LaporanPembelianController::class,'index'])->name('pembelian.index');
             Route::get('/pembelian/data', [LaporanPembelianController::class, 'getPembelianData'])->name('pembelian.data'); // Untuk DataTables server-side
 
-            Route::get('/analisis-harga-beli', [\App\Http\Controllers\Admin\LaporanHargaBeliController::class, 'index'])->name('harga_beli.index');
+            Route::get('/analisis-harga-beli', [LaporanHargaBeliController::class, 'index'])->name('harga_beli.index');
         
             // Halaman detail riwayat per produk
-            Route::get('/analisis-harga-beli/{produk}', [\App\Http\Controllers\Admin\LaporanHargaBeliController::class, 'show'])->name('harga_beli.show');
+            Route::get('/analisis-harga-beli/{produk}', [LaporanHargaBeliController::class, 'show'])->name('harga_beli.show');
             
             // --- Laporan Stok ---
             // Grup e prefix 'stok' dengan nama grup 'stok.' agar menghasilkan admin.laporan.stok.
@@ -220,12 +222,12 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/penerimaan', [GudangPenerimaanController::class, 'store'])->name('penerimaan.store');
         
         Route::prefix('stok-opname')->name('stok-opname.')->group(function() {
-            Route::get('/', [\App\Http\Controllers\Admin\StokOpnameController::class, 'index'])->name('index');
-            Route::get('/create', [\App\Http\Controllers\Admin\StokOpnameController::class, 'create'])->name('create');
-            Route::post('/', [\App\Http\Controllers\Admin\StokOpnameController::class, 'store'])->name('store');
-            Route::get('/{stokOpname}', [\App\Http\Controllers\Admin\StokOpnameController::class, 'show'])->name('show');
+            Route::get('/', [StokOpnameController::class, 'index'])->name('index');
+            Route::get('/create', [StokOpnameController::class, 'create'])->name('create');
+            Route::post('/', [StokOpnameController::class, 'store'])->name('store');
+            Route::get('/{stokOpname}', [StokOpnameController::class, 'show'])->name('show');
             // SATU ROUTE UNTUK MENYELESAIKAN DAN MENYESUAIKAN
-            Route::post('/{stokOpname}/finish', [\App\Http\Controllers\Admin\StokOpnameController::class, 'finishAndAdjust'])->name('finish_and_adjust');
+            Route::post('/{stokOpname}/finish', [StokOpnameController::class, 'finishAndAdjust'])->name('finish_and_adjust');
         });
         // Fitur Cek Stok untuk Gudang
         Route::prefix('stok')->name('stok.')->group(function () { // Membuat sub-grup 'stok' agar lebih rapi
@@ -237,18 +239,12 @@ Route::middleware(['auth'])->group(function () {
             // Nama route menjadi: gudang.stok.ajax_search_produk_gudang
         });
     });
-    Route::get('/ajax/produk-penerimaan/search', [GudangPenerimaanController::class, 'searchProdukForPenerimaanAjax'])->name('gudang.ajax.produk.search');
-            Route::prefix('perpindahan-stok')->name('perpindahan-stok.')->group(function () {
-            // Halaman utama untuk menampilkan riwayat perpindahan
-            Route::get('/', [\App\Http\Controllers\Admin\PerpindahanStokController::class, 'index'])->name('index');
-            // Halaman form untuk membuat perpindahan baru
-            Route::get('/create', [\App\Http\Controllers\Admin\PerpindahanStokController::class, 'create'])->name('create');
-            // Aksi untuk menyimpan perpindahan
-            Route::post('/', [\App\Http\Controllers\Admin\PerpindahanStokController::class, 'store'])->name('store');
-            // AJAX untuk mencari batch stok
-            Route::get('/ajax/search-batch', [\App\Http\Controllers\Admin\PerpindahanStokController::class, 'searchBatchAjax'])->name('ajax.search-batch');
-            
-            Route::get('/ajax/get-serials', [\App\Http\Controllers\Admin\PerpindahanStokController::class, 'getSerialsFromBatch'])->name('ajax.get-serials');
 
-        });
+    Route::middleware(['role:GUDANG,ADMIN'])->prefix('perpindahan-stok')->name('perpindahan-stok.')->group(function () {
+        Route::get('/', [PerpindahanStokController::class, 'index'])->name('index');
+        Route::get('/create', [PerpindahanStokController::class, 'create'])->name('create');
+        Route::post('/', [PerpindahanStokController::class, 'store'])->name('store');
+        Route::get('/ajax/search-batch', [PerpindahanStokController::class, 'searchBatchAjax'])->name('ajax.search-batch');
+        Route::get('/ajax/get-serials', [PerpindahanStokController::class, 'getSerialsFromBatch'])->name('ajax.get-serials');
+    });
 });

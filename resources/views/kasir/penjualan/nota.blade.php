@@ -199,8 +199,6 @@
                 font-size: 0.85em;
             }
 
-            /* Letakkan ini di dalam tag <style> */
-
             .info-retur-container {
                 border: 2px dashed #d9534f; /* Garis putus-putus merah */
                 background-color: #fdf7f7; /* Latar sedikit merah */
@@ -221,6 +219,18 @@
             .info-retur-container li {
                 margin-bottom: 8px;
             }
+
+            .info-lanjutan-pesanan {
+            margin-top: 30px;
+            border-top: 1px solid #eeeeee;
+            padding-top: 20px;
+            text-align: center;
+            font-size: 0.9em;
+            background-color: #f0f8ff; /* Warna latar biru muda */
+            border-radius: 8px;
+            padding: 15px;
+            border: 1px solid #bde0fe;
+        }
         }
     </style>
 </head>
@@ -233,7 +243,8 @@
             @if(isset($teleponToko) && $teleponToko) <p>Telp: {{ $teleponToko }}</p> @endif
             {{-- Garis bawah sudah dihandle oleh border-bottom pada .header-nota --}}
             <h4>
-                @if($penjualan->tipe_transaksi == 'PESAN_BARANG')
+                {{-- ### LOGIKA JUDUL NOTA BARU ### --}}
+                @if($penjualan->tipe_transaksi == 'PESAN_BARANG' && $penjualan->status_penjualan !== 'SELESAI')
                     BUKTI PESAN BARANG (DP)
                 @else
                     NOTA PENJUALAN
@@ -241,7 +252,7 @@
             </h4>
         </div>
 
-        
+        {{-- (Blok Pemberitahuan Retur) --}}
         @if($penjualan->retur->isNotEmpty())
             @php
                 $totalQtyTerjual = $penjualan->detailPenjualan->sum('jumlah');
@@ -308,11 +319,14 @@
                 </tr>
             </thead>
             <tbody>
-                @foreach($penjualan->detailPenjualan as $index => $detail)
+                @foreach($penjualan->detailPenjualan as $detail)
                     <tr>
                         <td class="item-detail">
                             <span class="product-name">{{ $detail->nama_produk_snapshot ?: $detail->produk->nama }}</span>
-                            @if($detail->nomor_seri_terjual)
+                            
+                            {{-- ### LOGIKA TAMPILKAN NOMOR SERI BARU ### --}}
+                            {{-- Tampilkan nomor seri HANYA jika status penjualan sudah SELESAI --}}
+                            @if($penjualan->status_penjualan == 'SELESAI' && $detail->nomor_seri_terjual)
                                 <span class="serial-numbers">SN: {{ str_replace(',', ', ', $detail->nomor_seri_terjual) }}</span>
                             @endif
                         </td>
@@ -353,27 +367,33 @@
                         <td>Uang Muka (DP)</td>
                         <td class="text-end">{{ number_format($penjualan->uang_muka, 0, ',', '.') }}</td>
                     </tr>
-                    <tr>
-                        <td><strong>Sisa Pembayaran</strong></td>
-                        <td class="text-end"><strong>{{ number_format($penjualan->sisa_pembayaran, 0, ',', '.') }}</strong></td>
-                    </tr>
-                @else
+                    @if($penjualan->status_penjualan == 'SELESAI')
+                        <tr>
+                            <td>Pelunasan</td>
+                            <td class="text-end">{{ number_format($penjualan->sisa_pembayaran, 0, ',', '.') }}</td>
+                        </tr>
+                         <tr>
+                            <td>Total Bayar</td>
+                            <td class="text-end">{{ number_format($penjualan->total_harga, 0, ',', '.') }}</td>
+                        </tr>
+                    @else
+                         <tr>
+                            <td><strong>Sisa Pembayaran</strong></td>
+                            <td class="text-end"><strong>{{ number_format($penjualan->sisa_pembayaran, 0, ',', '.') }}</strong></td>
+                        </tr>
+                    @endif
+                @else {{-- Untuk Penjualan BIASA --}}
                     <tr>
                         <td>Uang Bayar</td>
-                        <td class="text-end">
-                            {{-- Logika untuk uang bayar bisa disesuaikan --}}
-                            {{-- Jika ada field $penjualan->uang_bayar, gunakan itu. Jika tidak, bisa dihitung atau disesuaikan. --}}
-                            {{ number_format(($penjualan->uang_bayar ?? $penjualan->total_harga + ($penjualan->kembalian ?? 0)), 0, ',', '.') }}
-                        </td>
+                        <td class="text-end">{{ number_format(($penjualan->uang_bayar ?? $penjualan->total_harga), 0, ',', '.') }}</td>
                     </tr>
                     <tr>
                         <td>Kembalian</td>
-                        <td class="text-end">
-                            {{ number_format($penjualan->kembalian ?? 0, 0, ',', '.') }}
-                        </td>
+                        <td class="text-end">{{ number_format($penjualan->kembalian ?? 0, 0, ',', '.') }}</td>
                     </tr>
                 @endif
-                 <tr>
+                
+                <tr>
                     <td>Metode Bayar</td>
                     <td class="text-end">{{ ucwords(str_replace('_', ' ', $penjualan->metode_pembayaran)) }}</td>
                 </tr>
@@ -382,31 +402,54 @@
 
         {{-- 5. Informasi Garansi --}}
         @php
-            $itemsWithGaransi = $penjualan->detailPenjualan->filter(function($detail) {
-                return $detail->customer_garansi_berakhir_at !== null;
-            });
+            $itemsWithGaransi = $penjualan->detailPenjualan->filter(fn($d) => !is_null($d->customer_garansi_berakhir_at));
         @endphp
 
-        @if($itemsWithGaransi->isNotEmpty() && $penjualan->tipe_transaksi !== 'PESAN_BARANG')
+        @if($penjualan->tipe_transaksi == 'PESAN_BARANG' && $penjualan->status_penjualan !== 'SELESAI')
+            <div class="info-lanjutan-pesanan">
+                @if($penjualan->estimasi_kirim_at)
+                    <p class="mb-2">
+                        <strong>Estimasi barang tiba di toko:</strong> {{ \Carbon\Carbon::parse($penjualan->estimasi_kirim_at)->isoFormat('dddd, D MMMM YYYY') }}
+                    </p>
+                @endif
+                <p class="fw-bold">Informasi Ketersediaan Barang:</p>
+                <p>
+                    Untuk mengkonfirmasi ketersediaan barang pesanan Anda,
+                    silakan hubungi kami melalui WhatsApp di nomor berikut:
+                </p>
+                <p style="font-size: 1.2em; font-weight: bold; color: #198754;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-whatsapp" viewBox="0 0 16 16">
+                        <path d="M13.601 2.326A7.854 7.854 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.933 7.933 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.898 7.898 0 0 0 13.6 2.326zM7.994 14.521a6.573 6.573 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.557 6.557 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592-.543 0-1.08-.081-1.598-.235l-.48-.154z"/>
+                        <path d="M10.871 9.301c-.146-.364-.263-.465-.437-.493-.174-.028-.372-.028-.543.028-.172.055-.372.172-.543.342-.172.172-.343.372-.465.518-.122.146-.243.263-.437.263-.195 0-.44-.081-.687-.263s-.543-.405-1.057-.872c-.513-.465-1.057-1.08-1.057-1.08-.122-.146-.028-.243.055-.316.082-.073.172-.172.24-.263.07-.1.122-.172.172-.24.055-.081.028-.146-.028-.263s-.372-.872-.518-1.141c-.146-.263-.29-.24-.437-.24-.147 0-.316.028-.465.028s-.343.122-.465.263c-.122.146-.465.437-.465.98s.055 1.141.122 1.316c.07.172.316.518.73.931.413.413.872.82 1.342 1.057.465.235.872.364 1.141.364.413 0 .78-.146 1.057-.405s.78-.73.896-.931c.122-.204.122-.372.081-.518-.028-.172-.146-.316-.263-.437z"/>
+                    </svg> 
+                    0812-9080-8046
+                </p>
+                <p>
+                    Mohon sebutkan <strong>Nomor Pesanan ({{ $penjualan->nomor_penjualan }})</strong> saat menghubungi kami.
+                </p>
+            </div>
+        @endif
+
+        @if($penjualan->status_penjualan == 'SELESAI' && $itemsWithGaransi->isNotEmpty())
             <div class="info-garansi-container">
                 <h5>Informasi Garansi:</h5>
                 @foreach($itemsWithGaransi as $detail)
                     @php
-                        $tipeGaransiDisplay = 'Tidak Diketahui';
+                        // Logika tipe garansi Anda sudah benar, kita pertahankan
                         $tipeGaransiDariBatch = 'Tidak Ada';
-                        // Logika untuk mendapatkan tipe garansi dari batch
-                        // Ini adalah asumsi dari kode asli Anda, pastikan $detail->stokAlokasi dan relasinya benar
                         if ($detail->stokAlokasi->isNotEmpty() && $detail->stokAlokasi->first()->stokBarang) {
                             $firstBatchType = $detail->stokAlokasi->first()->stokBarang->tipe_garansi ?? 'NONE';
                             if ($firstBatchType === 'RESMI') $tipeGaransiDariBatch = 'Resmi';
                             elseif ($firstBatchType === 'SELF_SERVICE') $tipeGaransiDariBatch = 'Toko';
                         }
                     @endphp
-                    <div class="garansi-item">
-                        - <strong>{{ $detail->nama_produk_snapshot ?: $detail->produk->nama }}</strong>:
-                        Garansi {{ $tipeGaransiDariBatch }}
-                        s/d {{ \Carbon\Carbon::parse($detail->customer_garansi_berakhir_at)->isoFormat('D MMMM YYYY') }}
-                    </div>
+                    @if($tipeGaransiDariBatch !== 'Tidak Ada')
+                        <div class="garansi-item">
+                            - <strong>{{ $detail->nama_produk_snapshot }}</strong>:
+                            Garansi {{ $tipeGaransiDariBatch }}
+                            s/d {{ \Carbon\Carbon::parse($detail->customer_garansi_berakhir_at)->isoFormat('D MMMM YYYY') }}
+                        </div>
+                    @endif
                 @endforeach
             </div>
         @endif

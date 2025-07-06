@@ -142,7 +142,7 @@ class LaporanStokController extends Controller
                     return $sumberText . '<br><small class="text-muted">' . $hargaBeli . '</small>';
                 })
                 
-                ->editColumn('kondisi', function($batch) { /* ... logika badge sama ... */
+                ->editColumn('kondisi', function($batch) { 
                     $kondisiText = ucwords(str_replace('_', ' ', $batch->kondisi));
                     $badgeClass = 'bg-secondary';
                     if ($batch->kondisi === 'BAIK') $badgeClass = 'bg-success';
@@ -159,20 +159,40 @@ class LaporanStokController extends Controller
                     }
                     return '<span class="text-muted">0 ' . e($produk->satuan) . '</span>';
                 })
-                ->addColumn('nomor_seri_tersedia', function($batch) use ($produk) { /* ... logika serial sama ... */ 
+                ->addColumn('nomor_seri_tersedia', function($batch) use ($produk) {
                     if (!$produk->memiliki_serial) return '-';
+
+                    // ### LOGIKA BARU UNTUK MENGAMBIL NOMOR SERI ###
                     
-                    $candidateSerials = RiwayatPergerakanStok::where('id_stok_barang_terkait', $batch->id)->where('jumlah_masuk', '>', 0)->whereNotNull('nomor_seri')->distinct()->pluck('nomor_seri');
-                    if ($candidateSerials->isEmpty()) return '-';
-
-                    $latestMovementIds = RiwayatPergerakanStok::select(DB::raw('MAX(id) as id'))->whereIn('nomor_seri', $candidateSerials)->groupBy('nomor_seri');
-
-                    $availableSerials = RiwayatPergerakanStok::whereIn('id', $latestMovementIds)
-                        ->where('id_stok_barang_terkait', $batch->id)
-                        ->where('jumlah_masuk', '>', 0)
+                    // 1. Ambil semua kandidat serial yang PERNAH TERCATAT di batch ini,
+                    //    baik saat masuk, keluar, atau pindah.
+                    $candidateSerials = RiwayatPergerakanStok::where('id_stok_barang_terkait', $batch->id)
+                        ->whereNotNull('nomor_seri')
+                        ->distinct()
                         ->pluck('nomor_seri');
 
-                    return $availableSerials->isNotEmpty() ? $availableSerials->implode(', ') : '<span class="text-danger small">Habis</span>';
+                    if ($candidateSerials->isEmpty()) {
+                        return '-'; // Tidak ada histori serial sama sekali untuk batch ini
+                    }
+
+                    // 2. Dari semua kandidat, cari ID pergerakan TERAKHIR untuk setiap serial.
+                    $latestMovementIds = RiwayatPergerakanStok::select(DB::raw('MAX(id) as id'))
+                        ->whereIn('nomor_seri', $candidateSerials)
+                        ->groupBy('nomor_seri')
+                        ->pluck('id');
+
+                    // 3. Ambil semua serial dari pergerakan terakhir yang:
+                    //    a. Statusnya adalah MASUK (jumlah_masuk > 0) ATAU merupakan perpindahan (tipe_transaksi = 'PERPINDAHAN_STOK')
+                    //    b. Dan benar-benar milik BATCH INI.
+                    $availableSerials = RiwayatPergerakanStok::whereIn('id', $latestMovementIds)
+                        ->where(function ($query) use ($batch) {
+                            $query->where('jumlah_masuk', '>', 0)
+                                ->orWhere('tipe_transaksi', 'PERPINDAHAN_STOK');
+                        })
+                        ->where('id_stok_barang_terkait', $batch->id)
+                        ->pluck('nomor_seri');
+
+                    return $availableSerials->isNotEmpty() ? $availableSerials->implode(', ') : '<span class="text-danger small">Habis / Pindah</span>';
                 })
                 ->rawColumns(['stok_siap_jual', 'nomor_seri_tersedia', 'sumber_dan_harga_display', 'kondisi'])
                 ->make(true);
@@ -202,16 +222,25 @@ class LaporanStokController extends Controller
             ->where('tanggal_transaksi', '<', $tanggalMulai)
             ->orderBy('id', 'desc')->value('saldo_setelah_transaksi') ?? 0;
 
-        // 2. Ambil semua data riwayat dalam periode dengan relasi yang dibutuhkan
-        $pergerakanStok = RiwayatPergerakanStok::where('id_produk', $produk->id)
-            ->whereBetween('tanggal_transaksi', [$tanggalMulai, $tanggalSelesai])
-            ->with([
-                'pengguna',
-                // Muat relasi polimorfik 'referensi'
-                'referensi',
-            ])
-            ->orderBy('id', 'asc')
-            ->get();
+        // 2. Ambil semua data riwayat dengan relasi yang dibutuhkan
+    $pergerakanStok = RiwayatPergerakanStok::where('id_produk', $produk->id)
+        ->whereBetween('tanggal_transaksi', [$tanggalMulai, $tanggalSelesai])
+        ->with([
+            'pengguna',
+            'stokBarangTerkait.supplier', // Penting untuk semua jenis penerimaan
+            'referensi' => function ($morphTo) {
+                // Muat relasi turunan untuk setiap tipe referensi
+                $morphTo->morphWith([
+                    \App\Models\Pembelian::class => ['supplier'],
+                    \App\Models\Penjualan::class => ['pelanggan', 'detailPenjualan'],
+                    \App\Models\ReturPembelian::class => ['stokBarang.supplier'],
+                    \App\Models\DetailReturPenjualan::class => ['returPenjualan.penjualanAsal.pelanggan'],
+                    \App\Models\ReturPenjualan::class => ['penjualanAsal.pelanggan'],
+                ]);
+            }
+        ])
+        ->orderBy('id', 'asc')
+        ->get();
         
         // Inisialisasi data untuk view
         $dataUntukView = [];
@@ -233,54 +262,77 @@ class LaporanStokController extends Controller
             $nomorReferensi = '-';
             $referensiLink = null;
             $keteranganDisplay = $item->keterangan ?? '';
-            $jenisTransaksiDisplay = ucwords(str_replace('_', ' ', $item->tipe_transaksi));
+            // Format default, akan ditimpa oleh logika spesifik
+            $jenisTransaksiDisplay = ucwords(str_replace('_', ' ', strtolower($item->tipe_transaksi)));
 
-            // Tentukan No. Referensi & Keterangan berdasarkan Tipe Referensi
-            if ($item->referensi) {
-                $referensiModel = $item->referensi;
+            // ### LOGIKA UTAMA: Cek berdasarkan tipe transaksi ###
+            switch ($item->tipe_transaksi) {
                 
-                if ($referensiModel instanceof Pembelian) {
-                    $jenisTransaksiDisplay = 'Penerimaan dari Supplier';
-                    $nomorReferensi = $referensiModel->nomor_pembelian;
-                    $referensiLink = route('admin.pembelian.show', $referensiModel->id);
-                    $referensiModel->loadMissing('supplier'); // Pastikan supplier ter-load
-                    $keteranganDisplay = "Dari: " . ($referensiModel->supplier->nama ?? 'Supplier Dihapus');
-                
-                } elseif ($referensiModel instanceof Penjualan) {
-                    $jenisTransaksiDisplay = 'Penjualan';
-                    $nomorReferensi = $referensiModel->nomor_penjualan;
-                    $referensiLink = route('kasir.penjualan.nota', $referensiModel->id);
-                    $referensiModel->loadMissing('pelanggan'); // Pastikan pelanggan ter-load
-                    $keteranganDisplay = "Terjual ke: " . ($referensiModel->pelanggan->nama ?? 'Umum');
-                
-                } elseif ($referensiModel instanceof ReturPembelian) {
-                    $nomorReferensi = $referensiModel->nomor_retur;
-                    $referensiLink = route('admin.retur_pembelian.show', $referensiModel->id);
-                    $referensiModel->loadMissing('supplier'); // Pastikan supplier dari nota retur di-load
-                    $namaSupplier = $referensiModel->supplier->nama ?? 'N/A';
-
-                   // Bedakan teks berdasarkan tipe transaksi di riwayat
-                    if($item->tipe_transaksi === 'RETUR_KE_SUPPLIER'){
-                        $jenisTransaksiDisplay = 'Retur ke Supplier';
-                        $keteranganDisplay = "Dikirim ke: " . $namaSupplier;
-                    } elseif ($item->tipe_transaksi === 'PENERIMAAN_PENGGANTI_RETUR') {
-                        $jenisTransaksiDisplay = 'Penerimaan Pengganti dari Supplier';
-                        $keteranganDisplay = "Dari: " . $namaSupplier; 
+                case 'PENERIMAAN_PO':
+                case 'PENERIMAAN_PENGGANTI_RETUR':
+                    $ref = $item->referensi;
+                    if ($ref instanceof \App\Models\Pembelian) {
+                        $nomorReferensi = $ref->nomor_pembelian;
+                        $referensiLink = route('admin.pembelian.show', $ref->id);
                     }
+                    $jenisTransaksiDisplay = ($item->tipe_transaksi === 'PENERIMAAN_PENGGANTI_RETUR') ? 'Penerimaan Barang Pengganti' : 'Penerimaan dari Supplier';
+                    $keteranganDisplay = "Dari: " . ($item->stokBarangTerkait->supplier->nama ?? 'N/A');
+                    if ($item->stokBarangTerkait) {
+                        $keteranganDisplay .= ". Harga Beli: Rp " . number_format($item->stokBarangTerkait->harga_beli, 0, ',', '.');
+                    }
+                    break;
+
+                case 'PENERIMAAN_MANUAL':
+                    $jenisTransaksiDisplay = 'Penerimaan Manual';
+                    if ($item->stokBarangTerkait) {
+                        $namaSupplier = $item->stokBarangTerkait->supplier->nama ?? 'N/A';
+                        $tipeStok = ucwords(strtolower(str_replace('_', ' ', $item->stokBarangTerkait->tipe_stok ?? '')));
+                        $keteranganDisplay = "Dari: {$namaSupplier} (Tipe: {$tipeStok})";
+                    }
+                    break;
+
+                case 'PENJUALAN':
+                case 'PENJUALAN_PESANAN_BARANG':
+                    $ref = $item->referensi;
+                    if ($ref instanceof \App\Models\Penjualan) {
+                        $jenisTransaksiDisplay = ($item->tipe_transaksi === 'PENJUALAN_PESANAN_BARANG') ? 'Penjualan (Pesan Barang)' : 'Penjualan';
+                        $nomorReferensi = $ref->nomor_penjualan;
+                        $referensiLink = route('kasir.penjualan.nota', $ref->id);
+                        $detailTerkait = $ref->detailPenjualan()->where('nomor_seri_terjual', 'like', '%' . $item->nomor_seri . '%')->first();
+                        $hargaJual = $detailTerkait->harga_jual ?? 0;
+                        $keteranganDisplay = "Terjual ke: " . ($ref->pelanggan->nama ?? 'Umum') . ". Harga Jual: Rp " . number_format($hargaJual, 0, ',', '.');
+                    }
+                    break;
+
+                case 'PROSES_RETUR_PELANGGAN':
+                    $ref = $item->referensi;
+                    if ($ref instanceof \App\Models\DetailReturPenjualan) {
+                        $returHeader = $ref->returPenjualan;
+                        $nomorReferensi = $returHeader->nomor_retur;
+                        $referensiLink = route('admin.proses_retur_pelanggan.show', $returHeader->id);
+                        $keteranganDisplay = "Retur diterima dari: " . ($returHeader->penjualanAsal->pelanggan->nama ?? 'Umum');
+                    }
+                    break;
                 
-                // ### INI LOGIKA BARU UNTUK RETUR PELANGGAN ###
-                } elseif ($referensiModel instanceof DetailReturPenjualan) {
-                    // 'referensi' kita menunjuk ke detail, jadi kita perlu naik ke header
-                    $jenisTransaksiDisplay = 'Proses Retur Pelanggan';
-                    $referensiModel->loadMissing('returPenjualan.penjualanAsal.pelanggan'); // Muat relasi bertingkat
-                    
-                    $nomorReferensi = $referensiModel->returPenjualan->nomor_retur;
-                    // Link ke halaman show Nota Retur di sisi Kasir/Admin
-                    $referensiLink = route('admin.proses_retur_pelanggan.show', $referensiModel->returPenjualan->id); 
-                    
-                    $namaPelanggan = $referensiModel->returPenjualan->penjualanAsal->pelanggan->nama ?? 'Umum';
-                    $keteranganDisplay = "Retur dari: " . $namaPelanggan;
-                }
+                case 'RETUR_KE_SUPPLIER':
+                    $ref = $item->referensi;
+                    if ($ref instanceof \App\Models\ReturPembelian) {
+                        $jenisTransaksiDisplay = 'Proses Retur ke Supplier';
+                        $nomorReferensi = $ref->nomor_retur;
+                        $referensiLink = route('admin.retur_pembelian.show', $ref->id);
+                        $keteranganDisplay = "Pengembalian barang ke Supplier: " . ($ref->stokBarang->supplier->nama ?? 'N/A');
+                    }
+                    break;
+
+                case 'PENYERAHAN_BARANG_RETUR':
+                    $ref = $item->referensi;
+                    if ($ref instanceof \App\Models\ReturPenjualan) {
+                        $jenisTransaksiDisplay = 'Penyerahan Barang Pengganti';
+                        $nomorReferensi = $ref->nomor_retur;
+                        $referensiLink = route('kasir.retur_penjualan.show', $ref->id);
+                        $keteranganDisplay = "Diserahkan ke: " . ($ref->penjualanAsal->pelanggan->nama ?? 'Umum');
+                    }
+                    break;
             }
 
             // Tambahkan Nomor Seri ke keterangan jika ada
@@ -320,121 +372,121 @@ class LaporanStokController extends Controller
      * FUNGSI BARU (REVISI FINAL): Memproses pencarian dan menampilkan hasil riwayat nomor seri.
      */
     public function getLacakNomorSeriResult(Request $request)
-{
-    $request->validate(['nomor_seri' => 'required|string|max:255']);
-    $nomorSeriDicari = trim($request->input('nomor_seri'));
+    {
+        $request->validate(['nomor_seri' => 'required|string|max:255']);
+        $nomorSeriDicari = trim($request->input('nomor_seri'));
 
-    // Eager loading ini sudah sangat baik, kita pertahankan.
-    $riwayat = RiwayatPergerakanStok::with([
-        'pengguna', 'stokBarangTerkait.supplier',
-        'referensi' => function ($morphTo) {
-            $morphTo->morphWith([
-                Pembelian::class => ['supplier'],
-                Penjualan::class => ['pelanggan', 'detailPenjualan'],
-                ReturPembelian::class => ['supplier'], 
-                DetailReturPenjualan::class => ['returPenjualan.penjualanAsal.pelanggan'],
-            ]);
-        }
-    ])
-    ->where('nomor_seri', $nomorSeriDicari)
-    ->orderBy('id', 'asc')
-    ->get();
-        
-    $riwayat->each(function ($log) {
-        $log->referensi_link = null;
-        $log->referensi_text = '-';
-        $log->jenis_transaksi_display = ucwords(str_replace('_', ' ', strtolower($log->tipe_transaksi)));
-        $log->keterangan_display = $log->keterangan ?? 'N/A';
-        $ref = $log->referensi;
-
-        // ### LOGIKA BARU YG LEBIH KONSISTEN ###
-        switch ($log->tipe_transaksi) {
-            
-            case 'PENERIMAAN_PO':
-                $log->jenis_transaksi_display = 'Penerimaan dari Supplier';
-                if ($ref instanceof \App\Models\Pembelian) {
-                    $log->referensi_link = route('admin.pembelian.show', $ref->id);
-                    $log->referensi_text = $ref->nomor_pembelian;
-                }
-                $log->keterangan_display = "Dari: " . ($log->stokBarangTerkait->supplier->nama ?? 'N/A') . ". Harga Beli: Rp " . number_format($log->stokBarangTerkait->harga_beli ?? 0, 0, ',', '.');
-                break;
-
-            case 'PENJUALAN':
-                if ($ref instanceof \App\Models\Penjualan) {
-                    $log->referensi_link = route('kasir.penjualan.nota', $ref->id);
-                    $log->referensi_text = $ref->nomor_penjualan;
-                    $detailTerkait = $ref->detailPenjualan()->where('nomor_seri_terjual', 'like', '%' . $log->nomor_seri . '%')->first();
-                    $hargaJual = $detailTerkait->harga_jual ?? 0;
-                    $log->keterangan_display = "Terjual ke: " . ($ref->pelanggan->nama ?? 'Umum') . ". Harga Jual: Rp " . number_format($hargaJual, 0, ',', '.');
-                }
-                break;
-            
-            case 'PROSES_RETUR_PELANGGAN':
-                if ($ref instanceof \App\Models\DetailReturPenjualan) {
-                    $returHeader = $ref->returPenjualan;
-                    $log->referensi_link = route('admin.proses_retur_pelanggan.show', $returHeader->id);
-                    $log->referensi_text = $returHeader->nomor_retur;
-                    $log->keterangan_display = "Retur diterima dari: " . ($returHeader->penjualanAsal->pelanggan->nama ?? 'Umum');
-                }
-                break;
-            
-            case 'RETUR_KE_SUPPLIER':
-                 $log->jenis_transaksi_display = 'Retur ke Supplier';
-                 if ($ref instanceof \App\Models\ReturPembelian) {
-                    $log->referensi_link = route('admin.retur_pembelian.show', $ref->id);
-                    $log->referensi_text = $ref->nomor_retur;
-                     $log->keterangan_display = "Dikirim ke: " . ($ref->supplier->nama ?? 'N/A');
-                }
-                break;
-                
-            case 'PENERIMAAN_PENGGANTI_RETUR':
-                $log->jenis_transaksi_display = 'Penerimaan Barang Pengganti';
-                if ($ref instanceof \App\Models\ReturPembelian) {
-                    $log->referensi_link = route('admin.retur_pembelian.show', $ref->id);
-                    $log->referensi_text = $ref->nomor_retur;
-                    $log->keterangan_display = "Diterima dari: " . ($ref->supplier->nama ?? 'N/A');
-                }
-                break;
-
-            case 'PENYERAHAN_BARANG_RETUR':
-                $log->jenis_transaksi_display = 'Penyerahan Barang Pengganti';
-                if ($ref instanceof \App\Models\DetailReturPenjualan) {
-                    $returHeader = $ref->returPenjualan;
-                    $log->referensi_link = route('kasir.retur_penjualan.show', $returHeader->id);
-                    $log->referensi_text = $returHeader->nomor_retur;
-                    $log->keterangan_display = "Diserahkan ke: " . ($returHeader->penjualanAsal->pelanggan->nama ?? 'Umum');
-                }
-                break;
-        }
-
-        // Tambahkan SN di akhir keterangan untuk konsistensi
-        if (!empty($log->nomor_seri)) {
-            // Hapus dulu SN lama jika ada untuk mencegah duplikasi
-            $log->keterangan_display = preg_replace("/\s*\(SN:.*? \)/i", '', $log->keterangan_display);
-            $log->keterangan_display .= " (SN: {$log->nomor_seri})";
-        }
-    });
-
-
-    // Tentukan status terkini
-    $statusTerkini = ['status' => 'Tidak Pernah Tercatat', 'lokasi' => '-'];
-    $logTerakhir = $riwayat->last();
-
-    if ($logTerakhir) {
-        if ($logTerakhir->jumlah_masuk > 0) {
-            $statusTerkini['status'] = 'TERSEDIA';
-            $lokasiBatch = StokBarang::find($logTerakhir->id_stok_barang_terkait);
-            if ($lokasiBatch) {
-                $statusTerkini['lokasi'] = "Batch ID: {$lokasiBatch->id} ({$lokasiBatch->kondisi}, di {$lokasiBatch->lokasi})";
-            } else {
-                 $statusTerkini['lokasi'] = 'Batch fisik sudah tidak ada/dihapus';
+        // Eager loading ini sudah sangat baik, kita pertahankan.
+        $riwayat = RiwayatPergerakanStok::with([
+            'pengguna', 'stokBarangTerkait.supplier',
+            'referensi' => function ($morphTo) {
+                $morphTo->morphWith([
+                    Pembelian::class => ['supplier'],
+                    Penjualan::class => ['pelanggan', 'detailPenjualan'],
+                    ReturPembelian::class => ['supplier'], 
+                    DetailReturPenjualan::class => ['returPenjualan.penjualanAsal.pelanggan'],
+                ]);
             }
-        } else { // Jika jumlah_keluar > 0
-            $statusTerkini['status'] = 'TIDAK TERSEDIA (' . ucwords(str_replace('_', ' ', strtolower($logTerakhir->tipe_transaksi))) . ')';
-            $statusTerkini['lokasi'] = 'Sudah keluar dari sistem';
-        }
-    }
+        ])
+        ->where('nomor_seri', $nomorSeriDicari)
+        ->orderBy('id', 'asc')
+        ->get();
+            
+        $riwayat->each(function ($log) {
+            $log->referensi_link = null;
+            $log->referensi_text = '-';
+            $log->jenis_transaksi_display = ucwords(str_replace('_', ' ', strtolower($log->tipe_transaksi)));
+            $log->keterangan_display = $log->keterangan ?? 'N/A';
+            $ref = $log->referensi;
 
-    return view('admin.laporan.stok.lacak_nomor_seri', compact('riwayat', 'nomorSeriDicari', 'statusTerkini'));
-}
+            // ### LOGIKA BARU YG LEBIH KONSISTEN ###
+            switch ($log->tipe_transaksi) {
+                
+                case 'PENERIMAAN_PO':
+                    $log->jenis_transaksi_display = 'Penerimaan dari Supplier';
+                    if ($ref instanceof \App\Models\Pembelian) {
+                        $log->referensi_link = route('admin.pembelian.show', $ref->id);
+                        $log->referensi_text = $ref->nomor_pembelian;
+                    }
+                    $log->keterangan_display = "Dari: " . ($log->stokBarangTerkait->supplier->nama ?? 'N/A') . ". Harga Beli: Rp " . number_format($log->stokBarangTerkait->harga_beli ?? 0, 0, ',', '.');
+                    break;
+
+                case 'PENJUALAN':
+                    if ($ref instanceof \App\Models\Penjualan) {
+                        $log->referensi_link = route('kasir.penjualan.nota', $ref->id);
+                        $log->referensi_text = $ref->nomor_penjualan;
+                        $detailTerkait = $ref->detailPenjualan()->where('nomor_seri_terjual', 'like', '%' . $log->nomor_seri . '%')->first();
+                        $hargaJual = $detailTerkait->harga_jual ?? 0;
+                        $log->keterangan_display = "Terjual ke: " . ($ref->pelanggan->nama ?? 'Umum') . ". Harga Jual: Rp " . number_format($hargaJual, 0, ',', '.');
+                    }
+                    break;
+                
+                case 'PROSES_RETUR_PELANGGAN':
+                    if ($ref instanceof \App\Models\DetailReturPenjualan) {
+                        $returHeader = $ref->returPenjualan;
+                        $log->referensi_link = route('admin.proses_retur_pelanggan.show', $returHeader->id);
+                        $log->referensi_text = $returHeader->nomor_retur;
+                        $log->keterangan_display = "Retur diterima dari: " . ($returHeader->penjualanAsal->pelanggan->nama ?? 'Umum');
+                    }
+                    break;
+                
+                case 'RETUR_KE_SUPPLIER':
+                    $log->jenis_transaksi_display = 'Retur ke Supplier';
+                    if ($ref instanceof \App\Models\ReturPembelian) {
+                        $log->referensi_link = route('admin.retur_pembelian.show', $ref->id);
+                        $log->referensi_text = $ref->nomor_retur;
+                        $log->keterangan_display = "Dikirim ke: " . ($ref->supplier->nama ?? 'N/A');
+                    }
+                    break;
+                    
+                case 'PENERIMAAN_PENGGANTI_RETUR':
+                    $log->jenis_transaksi_display = 'Penerimaan Barang Pengganti';
+                    if ($ref instanceof \App\Models\ReturPembelian) {
+                        $log->referensi_link = route('admin.retur_pembelian.show', $ref->id);
+                        $log->referensi_text = $ref->nomor_retur;
+                        $log->keterangan_display = "Diterima dari: " . ($ref->supplier->nama ?? 'N/A');
+                    }
+                    break;
+
+                case 'PENYERAHAN_BARANG_RETUR':
+                    $log->jenis_transaksi_display = 'Penyerahan Barang Pengganti';
+                    if ($ref instanceof \App\Models\DetailReturPenjualan) {
+                        $returHeader = $ref->returPenjualan;
+                        $log->referensi_link = route('kasir.retur_penjualan.show', $returHeader->id);
+                        $log->referensi_text = $returHeader->nomor_retur;
+                        $log->keterangan_display = "Diserahkan ke: " . ($returHeader->penjualanAsal->pelanggan->nama ?? 'Umum');
+                    }
+                    break;
+            }
+
+            // Tambahkan SN di akhir keterangan untuk konsistensi
+            if (!empty($log->nomor_seri)) {
+                // Hapus dulu SN lama jika ada untuk mencegah duplikasi
+                $log->keterangan_display = preg_replace("/\s*\(SN:.*? \)/i", '', $log->keterangan_display);
+                $log->keterangan_display .= " (SN: {$log->nomor_seri})";
+            }
+        });
+
+
+        // Tentukan status terkini
+        $statusTerkini = ['status' => 'Tidak Pernah Tercatat', 'lokasi' => '-'];
+        $logTerakhir = $riwayat->last();
+
+        if ($logTerakhir) {
+            if ($logTerakhir->jumlah_masuk > 0) {
+                $statusTerkini['status'] = 'TERSEDIA';
+                $lokasiBatch = StokBarang::find($logTerakhir->id_stok_barang_terkait);
+                if ($lokasiBatch) {
+                    $statusTerkini['lokasi'] = "Batch ID: {$lokasiBatch->id} ({$lokasiBatch->kondisi}, di {$lokasiBatch->lokasi})";
+                } else {
+                    $statusTerkini['lokasi'] = 'Batch fisik sudah tidak ada/dihapus';
+                }
+            } else { // Jika jumlah_keluar > 0
+                $statusTerkini['status'] = 'TIDAK TERSEDIA (' . ucwords(str_replace('_', ' ', strtolower($logTerakhir->tipe_transaksi))) . ')';
+                $statusTerkini['lokasi'] = 'Sudah keluar dari sistem';
+            }
+        }
+
+        return view('admin.laporan.stok.lacak_nomor_seri', compact('riwayat', 'nomorSeriDicari', 'statusTerkini'));
+    }
 }

@@ -8,7 +8,6 @@ use App\Models\DetailPembelian;
 use App\Models\Supplier;
 use App\Models\Produk;
 use App\Models\StokBarang;
-use App\Models\LogNomorSeri;
 use App\Models\RiwayatPergerakanStok; 
 use App\Http\Requests\StorePenerimaanRequest;
 use Illuminate\Http\Request;
@@ -153,7 +152,7 @@ class PenerimaanController extends Controller
             $tipe_penerimaan = 'PO';
         }
 
-        // Data lain untuk view (tetap sama)
+        // Data lain untuk view
         $suppliers = Supplier::where('status', true)->orderBy('nama')->pluck('nama', 'id');
         $lokasiPenyimpanan = ['GUDANG' => 'GUDANG', 'TOKO' => 'TOKO'];
         $tipeGaransi = ['NONE' => 'NONE', 'RESMI' => 'RESMI', 'SELF_SERVICE' => 'SELF SERVICE'];

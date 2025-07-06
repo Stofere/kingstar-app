@@ -10,11 +10,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
-use App\Models\DetailPenjualanStokAlokasi; // Model untuk alokasi stok terkait penjualan
-use App\Models\StokBarang; // Model untuk stok barang
-use App\Models\LogNomorSeri; // Model untuk log nomor seri terkait penjualan
-use App\Models\DetailPenjualan; // Model untuk detail penjualan yang berisi informasi produk, jumlah, harga, dll.
-
+use App\Models\DetailPenjualanStokAlokasi;
+use App\Models\StokBarang; 
+use App\Models\RiwayatPergerakanStok;
+use App\Models\DetailPenjualan; 
 
 class KasirPesanBarangController extends Controller
 {
@@ -82,27 +81,45 @@ class KasirPesanBarangController extends Controller
      */
     public function storeSelesaikan(Request $request, Penjualan $penjualan)
     {
-        // TODO: Validasi input (metode pembayaran pelunasan, uang bayar jika ada sisa)
-        // TODO: Proses inti pengurangan stok, update log serial, update status alokasi,
-        //       update status penjualan, hitung garansi, dll. (seperti yang sudah kita diskusikan)
+        Log::info("Kasir memulai proses penyelesaian untuk Pesanan ID: {$penjualan->id}", $request->all());
 
-        Log::info("Kasir mencoba menyelesaikan Pesan Barang ID: {$penjualan->id}", $request->all());
-        $user = Auth::user(); // Kasir yang memproses penyelesaian
+        // =========================================================================
+        // BLOK BARU: MEMBERSIHKAN INPUT SEBELUM VALIDASI
+        // =========================================================================
+        if ($request->has('uang_bayar_pelunasan')) {
+            // Panggil method helper yang ada di dalam class ini
+            $cleanedValue = $this->cleanRupiahInput($request->input('uang_bayar_pelunasan'));
+            $request->merge(['uang_bayar_pelunasan' => $cleanedValue]);
+        }
+        // =========================================================================
+        // BLOK 1: VALIDASI INPUT PELUNASAN
+        // =========================================================================
+        $sisaPembayaran = (float)($penjualan->sisa_pembayaran ?? 0);
+        if ($sisaPembayaran > 0) {
+            $request->validate([
+                'metode_pembayaran_pelunasan' => 'required|string',
+                'uang_bayar_pelunasan' => 'required|numeric|min:' . $sisaPembayaran,
+            ], [
+                'metode_pembayaran_pelunasan.required' => 'Metode pembayaran untuk pelunasan wajib dipilih.',
+                'uang_bayar_pelunasan.required' => 'Uang bayar untuk pelunasan wajib diisi.',
+                'uang_bayar_pelunasan.min' => 'Uang bayar pelunasan tidak boleh kurang dari sisa pembayaran.',
+            ]);
+        }
 
-        // --- SIMULASI PENYELESAIAN (GANTI DENGAN LOGIKA SEBENARNYA) ---
         DB::beginTransaction();
         try {
-            // 1. Ambil semua record DetailPenjualanStokAlokasi dengan tipe_alokasi 'DIALOKASIKAN_PESANAN'
-            $praAlokasiItems = DetailPenjualanStokAlokasi::whereHas('detailPenjualan', function ($q) use ($penjualan) {
-                $q->where('id_penjualan', $penjualan->id);
-            })
-            ->where('tipe_alokasi', 'DIALOKASIKAN_PESANAN')
-            ->with('stokBarang', 'detailPenjualan.produk') // Eager load
-            ->get();
+            // =========================================================================
+            // BLOK 2: PROSES SETIAP ITEM YANG DIALOKASIKAN
+            // =========================================================================
+            
+            // Ambil semua item yang sudah dialokasikan oleh Admin
+            $praAlokasiItems = DetailPenjualanStokAlokasi::whereHas('detailPenjualan', fn($q) => $q->where('id_penjualan', $penjualan->id))
+                ->where('tipe_alokasi', 'DIALOKASIKAN_PESANAN')
+                ->with('stokBarang', 'detailPenjualan.produk')
+                ->get();
 
             if ($praAlokasiItems->isEmpty() && $penjualan->detailPenjualan->sum('jumlah') > 0) {
-                 // Ini aneh jika ada item tapi tidak ada pra-alokasi
-                 throw new \Exception("Tidak ditemukan data pra-alokasi stok untuk pesanan ini. Hubungi Admin.");
+                throw new \Exception("Tidak ada data alokasi stok dari Admin untuk pesanan ini.");
             }
 
             foreach ($praAlokasiItems as $alokasi) {
@@ -111,93 +128,43 @@ class KasirPesanBarangController extends Controller
                 $produk = $detailPenjualan->produk;
 
                 if (!$stokBarang || $stokBarang->jumlah < $alokasi->jumlah_diambil) {
-                    throw new \Exception("Stok fisik untuk Batch ID {$stokBarang->id} (Produk: {$produk->nama}) tidak mencukupi saat penyelesaian.");
+                    throw new \Exception("Stok fisik untuk Batch ID {$stokBarang->id} (Produk: {$produk->nama}) tidak mencukupi.");
                 }
 
-                // A. Kurangi Stok Fisik
+                // A. Kurangi Stok Fisik dari Batch
                 $stokBarang->decrement('jumlah', $alokasi->jumlah_diambil);
 
-                // B. Update Log Nomor Seri jika ada
+                // B. (BARU) Catat di Riwayat Pergerakan Stok
+                $this->catatRiwayatStokKeluar($penjualan, $detailPenjualan, $stokBarang, $alokasi);
+                
+                // C. (BARU & DIPERBAIKI) Update Nomor Seri di Detail Penjualan
                 if ($produk->memiliki_serial && !empty($alokasi->nomor_seri_terkait)) {
-                    $serialsUntukDetailIni = explode(',', $alokasi->nomor_seri_terkait);
-                    foreach ($serialsUntukDetailIni as $sn) {
-                        $logSerial = LogNomorSeri::where('id_stok_barang_asal', $stokBarang->id)
-                                                ->where('nomor_seri', trim($sn))
-                                                // Idealnya status masih DITERIMA, tapi bisa jadi sudah TERJUAL jika ada kesalahan alokasi oleh admin
-                                                // atau bisa juga sudah DIALOKASIKAN_KE_PESANAN_LAIN
-                                                // Untuk amannya, kita cari yang DITERIMA, jika tidak ada, log error tapi lanjutkan.
-                                                ->where('status_log', 'DITERIMA') 
-                                                ->first();
-                        if ($logSerial) {
-                            $logSerial->update([
-                                'status_log' => 'TERJUAL',
-                                'id_referensi' => $detailPenjualan->id,
-                                'tipe_referensi' => DetailPenjualan::class,
-                                'tanggal_status' => now(),
-                            ]);
-                        } else {
-                            Log::warning("LogNomorSeri tidak ditemukan/status bukan DITERIMA untuk SN: {$sn}, Batch: {$stokBarang->id} saat penyelesaian Pesanan ID: {$penjualan->id}");
-                        }
-                    }
-                    // Update nomor_seri_terjual di detail_penjualan
-                    // Gabungkan dari semua alokasi untuk satu detail penjualan jika satu detail bisa dari banyak alokasi pra
-                     $currentSerials = !empty($detailPenjualan->nomor_seri_terjual) ? explode(',', $detailPenjualan->nomor_seri_terjual) : [];
-                     $newSerials = array_unique(array_merge($currentSerials, $serialsUntukDetailIni));
-                     $detailPenjualan->nomor_seri_terjual = implode(',', $newSerials);
+                    $currentSerials = !empty($detailPenjualan->nomor_seri_terjual) ? explode(',', $detailPenjualan->nomor_seri_terjual) : [];
+                    $newSerials = array_unique(array_merge($currentSerials, explode(',', $alokasi->nomor_seri_terkait)));
+                    $detailPenjualan->nomor_seri_terjual = implode(',', $newSerials);
+                    $detailPenjualan->save(); // Simpan perubahan nomor seri
                 }
-                // C. Update tipe_alokasi di DetailPenjualanStokAlokasi
-                $alokasi->tipe_alokasi = 'STOK_KELUAR_PESANAN';
-                $alokasi->save();
+
+                // D. Update tipe_alokasi di tabel junction menjadi final
+                $alokasi->update(['tipe_alokasi' => 'STOK_KELUAR_PESANAN']);
             }
-
-            // D. Update Detail Penjualan (Garansi, Konsinyasi) setelah semua alokasi diproses
-            foreach($penjualan->detailPenjualan as $dp) {
-                $produkDp = $dp->produk;
-                $isKonsinyasiItem = false;
-                $tipeGaransiTerpilihUntukPelanggan = 'NONE';
-
-                // Cek dari batch yang benar-benar diambil untuk item ini
-                $alokasiUntukDp = DetailPenjualanStokAlokasi::where('id_detail_penjualan', $dp->id)
-                                        ->where('tipe_alokasi', 'STOK_KELUAR_PESANAN') // Yang baru saja diupdate
-                                        ->with('stokBarang')
-                                        ->get();
-                foreach($alokasiUntukDp as $alok) {
-                    if ($alok->stokBarang->tipe_stok === 'KONSINYASI') {
-                        $isKonsinyasiItem = true;
-                    }
-                    if ($alok->stokBarang->tipe_garansi === 'RESMI') {
-                        $tipeGaransiTerpilihUntukPelanggan = 'RESMI';
-                    } elseif ($tipeGaransiTerpilihUntukPelanggan !== 'RESMI' && $alok->stokBarang->tipe_garansi === 'SELF_SERVICE') {
-                        $tipeGaransiTerpilihUntukPelanggan = 'SELF_SERVICE';
-                    }
-                }
-
-                $updateDataDetail = [];
-                $updateDataDetail['status_bayar_konsinyasi'] = $isKonsinyasiItem ? 'BELUM_DIBAYAR_SUPPLIER' : 'BELUM_RELEVAN';
-
-                if ($tipeGaransiTerpilihUntukPelanggan === 'RESMI' && $produkDp->durasi_garansi_standar_bulan > 0) {
-                    $updateDataDetail['customer_garansi_mulai_at'] = $penjualan->tanggal_penjualan->copy()->toDateString(); // Atau now() jika garansi mulai saat barang diambil
-                    $updateDataDetail['customer_garansi_berakhir_at'] = Carbon::parse($penjualan->tanggal_penjualan)->addMonths($produkDp->durasi_garansi_standar_bulan)->toDateString();
-                } elseif ($tipeGaransiTerpilihUntukPelanggan === 'SELF_SERVICE') {
-                    $updateDataDetail['customer_garansi_mulai_at'] = $penjualan->tanggal_penjualan->copy()->toDateString();
-                    $updateDataDetail['customer_garansi_berakhir_at'] = Carbon::parse($penjualan->tanggal_penjualan)->addWeeks(1)->toDateString();
-                } else {
-                    $updateDataDetail['customer_garansi_mulai_at'] = null;
-                    $updateDataDetail['customer_garansi_berakhir_at'] = null;
-                }
-                if (!empty($updateDataDetail)) {
-                    $dp->update($updateDataDetail);
-                }
-            }
-
-
-            // E. Update Penjualan Utama
+            
+            // =========================================================================
+            // BLOK 3: UPDATE INFORMASI FINAL DI DETAIL PENJUALAN (GARANSI DLL)
+            // =========================================================================
+            $this->updateDetailPenjualanFinal($penjualan);
+            
+            // =========================================================================
+            // BLOK 4: UPDATE STATUS PENJUALAN UTAMA
+            // =========================================================================
             $penjualan->status_penjualan = 'SELESAI';
-            $penjualan->status_pembayaran = 'LUNAS'; // Pastikan lunas
-            $penjualan->dibayar_at = $penjualan->dibayar_at ?? now(); // Tanggal lunas penuh (jika DP, ini tanggal pelunasan)
+            $penjualan->status_pembayaran = 'LUNAS';
+            $penjualan->dibayar_at = now();
             $penjualan->sisa_pembayaran = 0;
-            // Simpan kasir yang memproses penyelesaian jika perlu field terpisah
-            // $penjualan->id_pengguna_selesai = $user->id;
+            // Jika ada pelunasan, catat metode pembayaran terakhir
+            if ($sisaPembayaran > 0) {
+                $penjualan->metode_pembayaran = $request->input('metode_pembayaran_pelunasan');
+            }
             $penjualan->save();
 
             DB::commit();
@@ -206,12 +173,107 @@ class KasirPesanBarangController extends Controller
             session()->flash('last_penjualan_nomor', $penjualan->nomor_penjualan);
 
             return redirect()->route('kasir.pesan_barang_selesai.index')
-                             ->with('success', "Pesan Barang {$penjualan->nomor_penjualan} berhasil diselesaikan. Nota akan terbuka di tab baru.");
+                            ->with('success', "Pesanan {$penjualan->nomor_penjualan} berhasil diselesaikan. Nota akan terbuka di tab baru.");
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error("Error storeSelesaikan Pesan Barang ID {$penjualan->id}: " . $e->getMessage() . " - Line: " . $e->getLine());
+            Log::error("Error saat menyelesaikan pesanan ID {$penjualan->id}: " . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             return redirect()->back()->with('error', 'Gagal menyelesaikan pesanan: ' . $e->getMessage())->withInput();
+        }
+    }
+
+     /**
+     * Membersihkan input yang diformat sebagai Rupiah.
+     * @param string|null $value
+     * @return int
+     */
+    protected function cleanRupiahInput($value): int
+    {
+        if (is_null($value)) {
+            return 0;
+        }
+        return (int) preg_replace('/[^0-9]/', '', $value);
+    }
+
+    /**
+     * Method helper untuk mencatat pergerakan stok keluar.
+     */
+    private function catatRiwayatStokKeluar($penjualan, $detailPenjualan, $stokBarang, $alokasi)
+    {
+        $saldoSebelumnya = RiwayatPergerakanStok::where('id_produk', $detailPenjualan->id_produk)->latest('id')->value('saldo_setelah_transaksi') ?? 0;
+        $keterangan = 'Penyelesaian Pesanan Barang untuk: ' . ($penjualan->pelanggan->nama ?? 'Umum');
+
+        if ($detailPenjualan->produk->memiliki_serial && !empty($alokasi->nomor_seri_terkait)) {
+            $serials = explode(',', $alokasi->nomor_seri_terkait);
+            $saldoBerjalan = $saldoSebelumnya;
+            foreach ($serials as $sn) {
+                $saldoBerjalan--; // Kurangi satu per satu untuk setiap serial
+                RiwayatPergerakanStok::create([
+                    'id_produk' => $detailPenjualan->id_produk,
+                    'id_stok_barang_terkait' => $stokBarang->id,
+                    'nomor_seri' => trim($sn),
+                    'tipe_transaksi' => 'PENJUALAN_PESANAN_BARANG',
+                    'jumlah_masuk' => 0,
+                    'jumlah_keluar' => 1,
+                    'saldo_setelah_transaksi' => $saldoBerjalan,
+                    'id_referensi' => $penjualan->id,
+                    'tipe_referensi' => Penjualan::class,
+                    'tanggal_transaksi' => now(),
+                    'keterangan' => $keterangan,
+                    'id_pengguna' => Auth::id(),
+                ]);
+            }
+        } else { // Non-serial
+            RiwayatPergerakanStok::create([
+                'id_produk' => $detailPenjualan->id_produk,
+                'id_stok_barang_terkait' => $stokBarang->id,
+                'nomor_seri' => null,
+                'tipe_transaksi' => 'PENJUALAN_PESANAN_BARANG',
+                'jumlah_masuk' => 0,
+                'jumlah_keluar' => $alokasi->jumlah_diambil,
+                'saldo_setelah_transaksi' => $saldoSebelumnya - $alokasi->jumlah_diambil,
+                'id_referensi' => $penjualan->id,
+                'tipe_referensi' => Penjualan::class,
+                'tanggal_transaksi' => now(),
+                'keterangan' => $keterangan,
+                'id_pengguna' => Auth::id(),
+            ]);
+        }
+    }
+
+    /**
+     * Method helper untuk mengupdate data final di detail penjualan (garansi, dll).
+     */
+    private function updateDetailPenjualanFinal(Penjualan $penjualan)
+    {
+        foreach ($penjualan->detailPenjualan as $dp) {
+            $produkDp = $dp->produk;
+            $isKonsinyasiItem = false;
+            $tipeGaransiTerpilih = 'NONE';
+
+            // Ambil semua alokasi yang sudah final untuk item detail ini
+            $alokasiFinal = $dp->stokAlokasi()->where('tipe_alokasi', 'STOK_KELUAR_PESANAN')->with('stokBarang')->get();
+            
+            foreach ($alokasiFinal as $alok) {
+                if ($alok->stokBarang->tipe_stok === 'KONSINYASI') $isKonsinyasiItem = true;
+                if ($alok->stokBarang->tipe_garansi === 'RESMI') $tipeGaransiTerpilih = 'RESMI';
+                elseif ($tipeGaransiTerpilih !== 'RESMI' && $alok->stokBarang->tipe_garansi === 'SELF_SERVICE') {
+                    $tipeGaransiTerpilih = 'SELF_SERVICE';
+                }
+            }
+
+            // Siapkan data untuk diupdate
+            $updateData = ['status_bayar_konsinyasi' => $isKonsinyasiItem ? 'BELUM_DIBAYAR_SUPPLIER' : 'BELUM_RELEVAN'];
+            
+            if ($tipeGaransiTerpilih === 'RESMI' && $produkDp->durasi_garansi_standar_bulan > 0) {
+                $updateData['customer_garansi_mulai_at'] = now()->toDateString();
+                $updateData['customer_garansi_berakhir_at'] = now()->addMonths($produkDp->durasi_garansi_standar_bulan)->toDateString();
+            } elseif ($tipeGaransiTerpilih === 'SELF_SERVICE') {
+                $updateData['customer_garansi_mulai_at'] = now()->toDateString();
+                $updateData['customer_garansi_berakhir_at'] = now()->addWeeks(1)->toDateString();
+            }
+            
+            $dp->update($updateData);
         }
     }
 }

@@ -104,7 +104,7 @@ $(document).ready(function() {
         const container = $('#serial-checkbox-container');
         container.html('<div class="text-center">Memuat serial...</div>');
         $.ajax({
-            url: "{{ route('perpindahan-stok.ajax.get-serials') }}", // <-- ROUTE BARU
+            url: "{{ route('perpindahan-stok.ajax.get-serials') }}", 
             data: { id_stok_barang: batchId },
             success: function(response) {
                 container.empty();

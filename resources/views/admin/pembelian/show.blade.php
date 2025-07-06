@@ -19,13 +19,6 @@
                     <i class="bi bi-pencil-square"></i> Edit
                 </a>
             @endif
-             {{-- Tombol Cetak (jika ada) --}}
-             {{-- <a href="{{ route('admin.pembelian.print', $pembelian->id) }}" class="btn btn-secondary btn-sm me-2" target="_blank">
-                <i class="bi bi-printer"></i> Cetak
-            </a> --}}
-            <a href="{{ route('admin.pembelian.index') }}" class="btn btn-light btn-sm border">
-                <i class="bi bi-arrow-left"></i> Kembali ke Daftar
-            </a>
         </div>
     </div>
 

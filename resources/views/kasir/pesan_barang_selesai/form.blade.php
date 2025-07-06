@@ -1,4 +1,3 @@
-{{-- kasir/pesan_barang_selesai/form.blade.php --}}
 @extends('layouts.app')
 
 @section('title', 'Selesaikan Pesan Barang: ' . $penjualan->nomor_penjualan)

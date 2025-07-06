@@ -48,87 +48,105 @@ class PerpindahanStokController extends Controller
      * Menyimpan data perpindahan stok.
      */
     public function store(Request $request)
-{
-    $validated = $request->validate([
-        'id_stok_barang_asal' => 'required|exists:stok_barang,id',
-        'jumlah_pindah' => 'required|integer|min:1',
-        'ke_lokasi' => 'required|string',
-        'catatan' => 'nullable|string',
-        'nomor_seri_dipindah' => 'nullable|array',
-    ]);
-
-    $batchAsal = StokBarang::with('produk')->lockForUpdate()->find($validated['id_stok_barang_asal']);
-    $jumlahPindah = (int)$validated['jumlah_pindah'];
-    
-    // Validasi
-    if ($jumlahPindah > $batchAsal->jumlah) {
-        return back()->with('error', 'Jumlah pindah melebihi sisa stok.')->withInput();
-    }
-    if ($validated['ke_lokasi'] === $batchAsal->lokasi) {
-        return back()->with('error', 'Lokasi tujuan tidak boleh sama.')->withInput();
-    }
-    if ($batchAsal->produk->memiliki_serial && count($validated['nomor_seri_dipindah'] ?? []) !== $jumlahPindah) {
-        return back()->with('error', 'Jumlah nomor seri yang dipilih tidak sesuai.')->withInput();
-    }
-
-    DB::beginTransaction();
-    try {
-        // === LANGKAH 1: UPDATE STOK FISIK ===
-        $batchAsal->decrement('jumlah', $jumlahPindah);
-        $batchBaru = $batchAsal->replicate();
-        $batchBaru->jumlah = $jumlahPindah;
-        $batchBaru->lokasi = $validated['ke_lokasi'];
-        $batchBaru->save();
-
-        // === LANGKAH 2: CATAT RIWAYAT PERPINDAHAN (UNTUK LOGISTIK) ===
-        $riwayatPindah = RiwayatPerpindahanStok::create([
-            'id_stok_barang' => $batchAsal->id, 'id_pengguna' => Auth::id(), 'jumlah' => $jumlahPindah,
-            'dari_lokasi' => $batchAsal->lokasi, 'ke_lokasi' => $validated['ke_lokasi'], 'dipindahkan_at' => now(),
-            'catatan' => "Batch baru dibuat dengan ID: {$batchBaru->id}. " . ($validated['catatan'] ?? ''),
+    {
+        $validated = $request->validate([
+            'id_stok_barang_asal' => 'required|exists:stok_barang,id',
+            'jumlah_pindah' => 'required|integer|min:1',
+            'ke_lokasi' => 'required|string',
+            'catatan' => 'nullable|string',
+            'nomor_seri_dipindah' => 'nullable|array',
         ]);
 
-        // === LANGKAH 3: UPDATE DAN CATAT RIWAYAT UNTUK SETIAP NOMOR SERI ===
-        $keteranganKeluar = "Pindah ke {$validated['ke_lokasi']} dari Batch {$batchAsal->id}";
-        $keteranganMasuk = "Pindah dari {$batchAsal->lokasi} ke Batch {$batchBaru->id}";
+        $batchAsal = StokBarang::with('produk')->lockForUpdate()->find($validated['id_stok_barang_asal']);
+        $jumlahPindah = (int)$validated['jumlah_pindah'];
         
-        if ($batchAsal->produk->memiliki_serial) {
-            foreach ($validated['nomor_seri_dipindah'] as $sn) {
-                // A. Update Log Lama (log_nomor_seri)
-                LogNomorSeri::where('nomor_seri', $sn)->where('id_stok_barang_asal', $batchAsal->id)
-                    ->update(['id_stok_barang_asal' => $batchBaru->id]);
+        // Validasi
+        if ($jumlahPindah > $batchAsal->jumlah) {
+            return back()->with('error', 'Jumlah pindah melebihi sisa stok.')->withInput();
+        }
+        if ($validated['ke_lokasi'] === $batchAsal->lokasi) {
+            return back()->with('error', 'Lokasi tujuan tidak boleh sama.')->withInput();
+        }
+        if ($batchAsal->produk->memiliki_serial && count($validated['nomor_seri_dipindah'] ?? []) !== $jumlahPindah) {
+            return back()->with('error', 'Jumlah nomor seri yang dipilih tidak sesuai.')->withInput();
+        }
 
-                // B. Catat di Riwayat Baru (riwayat_pergerakan_stok)
-                // Keluar dari batch lama
-                $saldoTerakhirKeluar = RiwayatPergerakanStok::where('id_produk', $batchAsal->id_produk)->lockForUpdate()->latest('id')->first();
-                $saldoSebelumKeluar = $saldoTerakhirKeluar->saldo_setelah_transaksi ?? 0;
-                RiwayatPergerakanStok::create([
-                    'id_produk' => $batchAsal->id_produk, 'id_stok_barang_terkait' => $batchAsal->id,
-                    'nomor_seri' => $sn, 'tipe_transaksi' => 'PINDAH_LOKASI_KELUAR',
-                    'jumlah_keluar' => 1, 'saldo_setelah_transaksi' => $saldoSebelumKeluar - 1,
-                    'id_referensi' => $riwayatPindah->id, 'tipe_referensi' => RiwayatPerpindahanStok::class,
-                    'tanggal_transaksi' => now(), 'keterangan' => $keteranganKeluar, 'id_pengguna' => Auth::id(),
-                ]);
+        DB::beginTransaction();
+        try {
+            // === LANGKAH 1: UPDATE STOK FISIK (Tetap Sama) ===
+            // Jika seluruh batch dipindah, cukup update lokasi. Jika parsial, buat batch baru.
+            $batchBaru = null;
+            if ($jumlahPindah == $batchAsal->jumlah) {
+                // Pindah seluruh batch, hanya update lokasi
+                $batchAsal->update(['lokasi' => $validated['ke_lokasi']]);
+                $batchBaru = $batchAsal; // Batch baru adalah batch asal yang sudah diupdate
+            } else {
+                // Pindah parsial, kurangi batch asal dan buat batch baru
+                $batchAsal->decrement('jumlah', $jumlahPindah);
+                $batchBaru = $batchAsal->replicate();
+                $batchBaru->jumlah = $jumlahPindah;
+                $batchBaru->lokasi = $validated['ke_lokasi'];
+                $batchBaru->save();
+            }
 
-                // Masuk ke batch baru
-                $saldoTerakhirMasuk = RiwayatPergerakanStok::where('id_produk', $batchAsal->id_produk)->lockForUpdate()->latest('id')->first();
-                $saldoSebelumMasuk = $saldoTerakhirMasuk->saldo_setelah_transaksi ?? 0;
+            // === LANGKAH 2: CATAT RIWAYAT PERPINDAHAN (UNTUK LOGISTIK) ===
+            $riwayatPindah = RiwayatPerpindahanStok::create([
+                'id_stok_barang' => $batchAsal->id, 'id_pengguna' => Auth::id(), 'jumlah' => $jumlahPindah,
+                'dari_lokasi' => $batchAsal->lokasi, 'ke_lokasi' => $validated['ke_lokasi'], 'dipindahkan_at' => now(),
+                'catatan' => "Batch baru dibuat dengan ID: {$batchBaru->id}. " . ($validated['catatan'] ?? ''),
+            ]);
+
+            // === LANGKAH 3 (BARU): CATAT DI RIWAYAT PERGERAKAN STOK ===
+            $produk = $batchAsal->produk;
+            $keterangan = "Pindah dari {$batchAsal->lokasi} ke {$validated['ke_lokasi']}. " . ($validated['catatan'] ?? '');
+            
+            // Jika berserial, buat satu riwayat per serial
+            if ($produk->memiliki_serial) {
+                foreach ($validated['nomor_seri_dipindah'] as $sn) {
+                    $saldoTerakhir = RiwayatPergerakanStok::where('id_produk', $produk->id)->latest('id')->value('saldo_setelah_transaksi') ?? 0;
+                    
+                    // Tidak ada stok keluar-masuk, karena saldo total tidak berubah.
+                    // Kita hanya update batch terkait dan lokasi.
+                    RiwayatPergerakanStok::create([
+                        'id_produk' => $produk->id,
+                        'id_stok_barang_terkait' => $batchBaru->id, // Langsung kaitkan ke batch baru
+                        'nomor_seri' => $sn,
+                        'tipe_transaksi' => 'PERPINDAHAN_STOK', // Satu tipe transaksi
+                        'jumlah_masuk' => 0, // Saldo tidak berubah
+                        'jumlah_keluar' => 0,
+                        'saldo_setelah_transaksi' => $saldoTerakhir, // Saldo tetap sama
+                        'id_referensi' => $riwayatPindah->id,
+                        'tipe_referensi' => RiwayatPerpindahanStok::class,
+                        'tanggal_transaksi' => now(),
+                        'keterangan' => $keterangan,
+                        'id_pengguna' => Auth::id(),
+                    ]);
+                }
+            } else { // Jika non-serial, cukup buat satu record
+                $saldoTerakhir = RiwayatPergerakanStok::where('id_produk', $produk->id)->latest('id')->value('saldo_setelah_transaksi') ?? 0;
+                
                 RiwayatPergerakanStok::create([
-                    'id_produk' => $batchAsal->id_produk, 'id_stok_barang_terkait' => $batchBaru->id,
-                    'nomor_seri' => $sn, 'tipe_transaksi' => 'PINDAH_LOKASI_MASUK',
-                    'jumlah_masuk' => 1, 'saldo_setelah_transaksi' => $saldoSebelumMasuk + 1,
-                    'id_referensi' => $riwayatPindah->id, 'tipe_referensi' => RiwayatPerpindahanStok::class,
-                    'tanggal_transaksi' => now()->addSecond(), 'keterangan' => $keteranganMasuk, 'id_pengguna' => Auth::id(),
+                    'id_produk' => $produk->id,
+                    'id_stok_barang_terkait' => $batchBaru->id,
+                    'tipe_transaksi' => 'PERPINDAHAN_STOK',
+                    'jumlah_masuk' => 0, // Saldo tidak berubah
+                    'jumlah_keluar' => 0,
+                    'saldo_setelah_transaksi' => $saldoTerakhir,
+                    'id_referensi' => $riwayatPindah->id,
+                    'tipe_referensi' => RiwayatPerpindahanStok::class,
+                    'tanggal_transaksi' => now(),
+                    'keterangan' => $keterangan,
+                    'id_pengguna' => Auth::id(),
                 ]);
             }
+            
+            DB::commit();
+            return redirect()->route('perpindahan-stok.index')->with('success', 'Perpindahan stok berhasil dicatat.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->with('error', 'Terjadi kesalahan: ' . $e->getMessage())->withInput();
         }
-        
-        DB::commit();
-        return redirect()->route('perpindahan-stok.index')->with('success', 'Perpindahan stok berhasil dicatat.');
-    } catch (\Exception $e) {
-        DB::rollBack();
-        return back()->with('error', 'Terjadi kesalahan: ' . $e->getMessage())->withInput();
     }
-}
     
     /**
      * AJAX untuk mencari batch stok yang akan dipindah.
@@ -172,23 +190,48 @@ class PerpindahanStokController extends Controller
     }
 
     /**
-     * FUNGSI BARU: AJAX untuk mengambil nomor seri dari batch.
+     * AJAX untuk mengambil nomor seri dari batch menggunakan RiwayatPergerakanStok.
      */
     public function getSerialsFromBatch(Request $request)
     {
         $validated = $request->validate(['id_stok_barang' => 'required|exists:stok_barang,id']);
-        
-        // Gunakan logika 'Log Terakhir' yang sudah terbukti
-        $batch = StokBarang::find($validated['id_stok_barang']);
-        $candidateSerials = LogNomorSeri::where('id_stok_barang_asal', $batch->id)->distinct()->pluck('nomor_seri');
-        
-        $availableSerials = [];
-        foreach ($candidateSerials as $serial) {
-            $latestLog = LogNomorSeri::where('nomor_seri', $serial)->latest('tanggal_status')->latest('id')->first();
-            if ($latestLog && $latestLog->id_stok_barang_asal == $batch->id && $latestLog->status_log === 'DITERIMA') {
-                $availableSerials[] = $serial;
-            }
+        $idStokBarang = $validated['id_stok_barang'];
+
+        $batch = StokBarang::find($idStokBarang);
+        if (!$batch || !$batch->produk->memiliki_serial) {
+            return response()->json(['success' => true, 'serials' => []]); // Kirim array kosong jika produk non-serial
         }
+        
+        // 1. Dapatkan semua kandidat serial yang PERNAH tercatat di sistem
+        // Ini lebih andal daripada hanya mencari di batch ini.
+        $candidateSerials = RiwayatPergerakanStok::where('id_produk', $batch->id_produk)
+            ->whereNotNull('nomor_seri')
+            ->distinct()
+            ->pluck('nomor_seri');
+        
+        if ($candidateSerials->isEmpty()) {
+            return response()->json(['success' => true, 'serials' => []]);
+        }
+
+        // 2. Dari semua kandidat, cari ID pergerakan TERAKHIR untuk setiap serial.
+        $latestMovementIds = RiwayatPergerakanStok::select(DB::raw('MAX(id) as id'))
+            ->whereIn('nomor_seri', $candidateSerials)
+            ->groupBy('nomor_seri')
+            ->pluck('id');
+
+        // 3. ### INI LOGIKA KUNCINYA ###
+        // Ambil semua serial dari pergerakan terakhir yang:
+        //    a. Merupakan transaksi MASUK (jumlah_masuk > 0) ATAU merupakan perpindahan (PERPINDAHAN_STOK)
+        //    b. Dan benar-benar milik BATCH INI yang sedang kita periksa.
+        $availableSerials = RiwayatPergerakanStok::whereIn('id', $latestMovementIds)
+            ->where('id_stok_barang_terkait', $idStokBarang) // Harus milik batch ini
+            ->where(function ($query) {
+                $query->where('jumlah_masuk', '>', 0)
+                    ->orWhere('tipe_transaksi', 'PERPINDAHAN_STOK');
+            })
+            ->pluck('nomor_seri')
+            ->values()
+            ->all();
         
         return response()->json(['success' => true, 'serials' => $availableSerials]);
     }

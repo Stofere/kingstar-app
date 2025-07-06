@@ -129,6 +129,22 @@
                         @error('status_pembayaran') <div class="invalid-feedback">{{ $message }}</div> @enderror
                     </div>
 
+                    {{-- Metode Pembayaranny --}}
+                    <div class="col-md-6">
+                        <label for="metode_pembayaran" class="form-label">Metode Pembayaran</label>
+                        <select class="form-select @error('metode_pembayaran') is-invalid @enderror" id="metode_pembayaran" name="metode_pembayaran">
+                            <option value="TUNAI" {{ old('metode_pembayaran') == 'TUNAI' ? 'selected' : '' }}>Tunai</option>
+                            <option value="QRIS" {{ old('metode_pembayaran') == 'QRIS' ? 'selected' : '' }}>QRIS</option>
+                            <option value="TRANSFER_BCA" {{ old('metode_pembayaran') == 'TRANSFER_BCA' ? 'selected' : '' }}>Transfer BCA</option>
+                            <option value="TRANSFER_MANDIRI" {{ old('metode_pembayaran') == 'TRANSFER_MANDIRI' ? 'selected' : '' }}>Transfer Mandiri</option>
+                            <option value="DEBIT_BCA" {{ old('metode_pembayaran') == 'DEBIT_BCA' ? 'selected' : '' }}>Debit BCA</option>
+                            <option value="DEBIT_MANDIRI" {{ old('metode_pembayaran') == 'DEBIT_MANDIRI' ? 'selected' : '' }}>Debit Mandiri</option>
+                            <option value="KARTU_KREDIT" {{ old('metode_pembayaran') == 'KARTU_KREDIT' ? 'selected' : '' }}>Kartu Kredit</option>
+                        </select>
+                        @error('metode_pembayaran') <div class="invalid-feedback">{{ $message }}</div> @enderror
+                    </div>
+
+
                      {{-- Tanggal Bayar (Opsional, mungkin muncul jika LUNAS) --}}
                      <div class="col-md-6" id="tanggal-bayar-group" style="{{ (isset($dataFromRetur) || old('status_pembayaran') == 'LUNAS') ? '' : 'display: none;' }}">
                         <label for="dibayar_at" class="form-label">Tanggal Bayar</label>

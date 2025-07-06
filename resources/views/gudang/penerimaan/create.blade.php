@@ -86,18 +86,31 @@
                         <label class="form-label">Tipe Penerimaan</label>
                         <input type="text" class="form-control" value="{{ strtoupper(str_replace('_', ' ', $tipe_penerimaan)) }}" readonly>
                     </div>
+                    
                     <div class="col-md-4">
-                        <label class="form-label required-label">Supplier</label>
+                        {{-- Label sekarang punya id untuk dikontrol oleh JS --}}
+                        <label for="id_supplier_manual" class="form-label">Supplier <span id="supplier-label-required" class="text-danger" style="display:none;">*</span></label>
                         @if($isManual)
-                            <select class="form-select select2-supplier" name="id_supplier_manual" data-placeholder="Pilih Supplier..." required>
-                                <option></option>
-                                {{-- Opsi diisi oleh Select2 AJAX --}}
+                            {{-- Dropdown untuk mode MANUAL --}}
+                            <select class="form-select select2-supplier @error('id_supplier_manual') is-invalid @enderror" 
+                                    id="id_supplier_manual" name="id_supplier_manual" 
+                                    data-placeholder="Pilih Supplier...">
+                                <option value=""></option>
+                                {{-- Loop melalui variabel $suppliers dari controller --}}
+                                @foreach ($suppliers as $id => $nama)
+                                    <option value="{{ $id }}" {{ old('id_supplier_manual') == $id ? 'selected' : '' }}>{{ $nama }}</option>
+                                @endforeach
                             </select>
                         @else
+                            {{-- Tampilan readonly untuk mode PO/RETUR --}}
                             <input type="text" class="form-control" value="{{ $sumberData->supplier->nama ?? 'N/A' }}" readonly>
                             <input type="hidden" name="id_supplier_manual" value="{{ $sumberData->supplier->id ?? '' }}">
                         @endif
+                        @error('id_supplier_manual')
+                            <div class="invalid-feedback">{{ $message }}</div>
+                        @enderror
                     </div>
+
                     <div class="col-md-4">
                         <label for="diterima_at" class="form-label required-label">Tanggal Penerimaan Fisik</label>
                         <input type="datetime-local" class="form-control @error('diterima_at') is-invalid @enderror" id="diterima_at" name="diterima_at" value="{{ old('diterima_at', now()->format('Y-m-d\TH:i')) }}" required>
@@ -296,7 +309,7 @@
 @push('scripts')
     <script>
     $(document).ready(function() {
-        // Inisialisasi Select2 untuk supplier jika mode manual
+        // Inisialisasi Select2 untuk supplier JIKLAU mode manual
         if ($('input[name="tipe_penerimaan"]').val() === 'MANUAL') {
             $('#id_supplier_manual').select2({
                 theme: "bootstrap-5",
@@ -304,6 +317,38 @@
                 allowClear: true
             });
         }
+
+        // Fungsi untuk cek apakah supplier wajib diisi
+        function checkSupplierRequirement() {
+            let isKonsinyasiSelected = false;
+            // Cek setiap dropdown 'tipe_stok' di dalam tabel
+            $('.item-tipe-stok').each(function() {
+                if ($(this).val() === 'KONSINYASI') {
+                    isKonsinyasiSelected = true;
+                    return false; // Hentikan loop jika sudah ketemu satu
+                }
+            });
+
+            const supplierSelect = $('#id_supplier_manual');
+            const supplierLabelRequired = $('#supplier-label-required');
+
+            if (isKonsinyasiSelected) {
+                supplierLabelRequired.show();
+                // Kita tidak menambahkan 'required' di sini karena validasi utama ada di backend.
+                // Ini hanya untuk UX.
+            } else {
+                supplierLabelRequired.hide();
+            }
+        }
+
+        // Panggil saat halaman dimuat pertama kali (untuk old input)
+        checkSupplierRequirement();
+
+        // Panggil setiap kali tipe stok diubah
+        // Gunakan event delegation agar bekerja pada baris yang baru ditambahkan
+        $('#detail-penerimaan-body').on('change', '.item-tipe-stok', function() {
+            checkSupplierRequirement();
+        });
 
         let manualItemNextIndex = {{ old('items') ? count(old('items')) : ($sumberData ? count($sumberData->items) : 0) }};
 

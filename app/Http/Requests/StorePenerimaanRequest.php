@@ -97,10 +97,6 @@ class StorePenerimaanRequest extends FormRequest
                         'string',
                         'distinct:ignore_case', // Tidak case sensitive untuk duplikasi dalam request
                         'max:255',
-                        // Validasi unique global di LogNomorSeri akan dilakukan di controller untuk pesan error yang lebih baik
-                        // Rule::unique('log_nomor_seri', 'nomor_seri')->where(function ($query) use ($produk) {
-                        //    return $query->where('id_produk', $produk->id)->whereNotIn('status_log', ['DIRETUR_SUPPLIER', 'HILANG']);
-                        // })->ignore(null, 'id_log_nomor_seri') // Ganti 'id_log_nomor_seri' jika nama kolom PK berbeda
                     ];
                 } elseif ($jumlahDiterimaSekarang === 0) {
                     // Jika jumlah 0, nomor seri tidak boleh ada

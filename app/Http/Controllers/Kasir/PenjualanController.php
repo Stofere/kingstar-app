@@ -12,14 +12,11 @@ use Carbon\Carbon;
 use App\Models\Pelanggan;
 use App\Models\Produk;
 use App\Models\StokBarang;
-use App\Models\LogNomorSeri;
 use App\Models\RiwayatPergerakanStok;
 use App\Models\Penjualan;
 use App\Models\DetailPenjualan;
 use App\Models\Pembelian;
-// Pastikan model DetailPenjualanStokAlokasi ada jika Anda menggunakannya,
-// Namun dalam logika store di bawah, kita akan create langsung dari relasi DetailPenjualan
-// use App\Models\DetailPenjualanStokAlokasi;
+
 
 
 class PenjualanController extends Controller
@@ -130,7 +127,9 @@ class PenjualanController extends Controller
                             ->where('jumlah', '>', 0)
                             ->where('kondisi', 'BAIK')
                             ->whereNull('id_penjualan_alokasi')
-                            ->where('lokasi', 'TOKO');
+                            ->where('lokasi', 'TOKO')
+                            ->withCount(['detailPenjualanAlokasiPesanBarangAktif as qty_dipesan']) // Hitung qty yg sudah di-booking
+                            ->orderBy('diterima_at', 'asc');
 
         // ================================================================
         // === FILTER BARU UNTUK KONSINYASI ---
@@ -151,9 +150,13 @@ class PenjualanController extends Controller
         $batches = $query->orderBy('diterima_at', 'asc')->get();
 
         $formattedBatches = $batches->map(function($batch) {
+            // Stok siap jual adalah stok fisik dikurangi yang sudah di-booking
+            $stokSiapJual = $batch->jumlah - $batch->qty_dipesan;
+            // Hanya tampilkan batch yang stok siap jualnya masih ada
+        if ($stokSiapJual > 0) {
             return [
                 'id' => $batch->id,
-                'jumlah_tersedia' => $batch->jumlah,
+                'jumlah_tersedia' => $stokSiapJual, // Kirim stok efektif ke frontend
                 'diterima_at_formatted' => Carbon::parse($batch->diterima_at)->isoFormat('D MMM YYYY, HH:mm'),
                 'harga_beli_formatted' => 'Rp ' . number_format($batch->harga_beli, 0, ',', '.'),
                 'lokasi' => $batch->lokasi,
@@ -162,9 +165,11 @@ class PenjualanController extends Controller
                 'tipe_stok' => $batch->tipe_stok,
                 'tipe_stok_display' => ucwords(str_replace('_', ' ', $batch->tipe_stok)),
             ];
-        });
+        }
+        return null; // Return null untuk batch yang stok efektifnya 0 atau kurang
+        })->filter()->values(); // Hapus nilai null dari koleksi dan re-index array
 
-        $totalStokTersediaDiSemuaBatch = $batches->sum('jumlah');
+        $totalStokTersediaDiSemuaBatch = $formattedBatches->sum('jumlah_tersedia');
 
         return response()->json([
             'success' => true,
@@ -172,7 +177,7 @@ class PenjualanController extends Controller
             'durasi_garansi_standar_bulan_produk' => $produk->durasi_garansi_standar_bulan,
             'batches_data' => $formattedBatches,
             'total_stok_tersedia' => $totalStokTersediaDiSemuaBatch,
-            'qty_diminta' => $qtyDibutuhkan,
+            'qty_diminta' => (int) $request->input('qty_dibutuhkan', 1),
         ]);
     }
 
